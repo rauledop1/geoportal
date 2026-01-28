@@ -967,6 +967,7 @@ export default function Geoportal() {
     {/* Draw Mode Handlers */ }
     const handleDrawPolygon = () => {
         setDrawMode('simple');
+        setEraseOverlap(false); // Standard draw, allow overlap
         if (draw.current) {
             // draw.current.deleteAll(); // Removed to allow multiple polygons
             draw.current.changeMode('draw_polygon');
@@ -985,9 +986,11 @@ export default function Geoportal() {
         }
     };
 
-    const handleFinishDraw = () => {
+    const handleDrawAutocomplete = () => {
+        setDrawMode('simple');
+        setEraseOverlap(true); // Enable erase overlap
         if (draw.current) {
-            draw.current.changeMode('simple_select');
+            draw.current.changeMode('draw_polygon');
         }
     };
 
@@ -1179,9 +1182,9 @@ export default function Geoportal() {
                                         <span className={styles.toolIcon}>✂️</span>
                                         <span>Cut Polygon (Draw Line)</span>
                                     </div>
-                                    <div className={styles.toolBtn} onClick={handleFinishDraw}>
-                                        <span className={styles.toolIcon}>✅</span>
-                                        <span>Finish Drawing (Autocomplete)</span>
+                                    <div className={styles.toolBtn} onClick={handleDrawAutocomplete}>
+                                        <span className={styles.toolIcon}>🧩</span>
+                                        <span>Draw w/ Autocomplete</span>
                                     </div>
                                     <div className={styles.toolBtn} onClick={handleDeleteSelected}>
                                         <span className={styles.toolIcon}>🗑️</span>
