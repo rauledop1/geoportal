@@ -244,44 +244,73 @@ export default function Geoportal() {
 
                 // If in CUT mode
                 if (drawMode === 'cut' && e.type === 'draw.create') {
-                    const all = data.features;
-                    // We expect a LineString as the cutter
-                    // The last feature drawn is the cutter
-                    const cutter = all[all.length - 1];
-
-                    // We expect 'geometry' state to hold the target polygon.
-                    // IMPORTANT: The target is NOT in 'draw' if we cleared it?
-                    // Wait, in previous step we add it to draw?
-                    // If we are in 'cut' mode, we might just have the cutter in draw if we cleared before.
-                    // But usually we want to see what we cut.
-                    // Let's assume 'geometry' state holds the Polygon to be cut.
-
-                    if (cutter && geometry && cutter.geometry.type === 'LineString') {
+                    const cutter = e.features[0];
+                    if (cutter && cutter.geometry.type === 'LineString') {
                         try {
-                            // Buffer the line to make it a polygon (e.g., 0.5m width = 0.0005km?)
-                            // turf/buffer uses kilometers by default? or generic units?
-                            // Default is kilometers. 1 meter = 0.001 km.
-                            const cutterPoly = buffer(cutter, 0.0005, { units: 'kilometers' }); // 0.5 meter buffer
+                            const allData = drawControl.getAll();
+                            // Target polygons to be cut (exclude the cutter itself)
+                            const targets = allData.features.filter(f =>
+                                f.id !== cutter.id &&
+                                (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
+                            );
 
-                            // Convert geometry state to Feature
-                            const targetFeature = { type: 'Feature', geometry: geometry, properties: {} };
+                            // Buffer the cutter line (approx 10 meters)
+                            const cutterPoly = buffer(cutter, 0.01, { units: 'kilometers' });
 
-                            const diff = difference(targetFeature, cutterPoly);
+                            const newFeatures = [];
+                            const idsToDelete = [cutter.id]; // Always remove the cutter line
 
-                            if (diff) {
-                                drawControl.deleteAll();
-                                // Add result back to draw to show it?
-                                // If we don't add it, the user sees nothing until next interaction?
-                                // Better to add it.
-                                drawControl.add(diff);
-                                setGeometry(diff.geometry);
-                            } else {
-                                alert("Cut resulted in empty geometry");
+                            let cutPerformed = false;
+
+                            targets.forEach(target => {
+                                const diff = difference(target, cutterPoly);
+
+                                if (diff) {
+                                    idsToDelete.push(target.id);
+
+                                    // If result is MultiPolygon, split it into separate features
+                                    if (diff.geometry.type === 'MultiPolygon') {
+                                        diff.geometry.coordinates.forEach(coords => {
+                                            newFeatures.push({
+                                                type: 'Feature',
+                                                properties: target.properties,
+                                                geometry: {
+                                                    type: 'Polygon',
+                                                    coordinates: coords
+                                                }
+                                            });
+                                        });
+                                    } else {
+                                        // Keep as simple Polygon
+                                        newFeatures.push(diff);
+                                    }
+                                    cutPerformed = true;
+                                } else {
+                                    // If diff is null (e.g. fully erased), we don't add anything back
+                                }
+                            });
+
+                            if (cutPerformed) {
+                                drawControl.delete(idsToDelete);
+                                if (newFeatures.length > 0) {
+                                    drawControl.add({ type: 'FeatureCollection', features: newFeatures });
+                                    // Update state with the first valid geometry so something is selected
+                                    setGeometry(newFeatures[0].geometry);
+                                } else {
+                                    setGeometry(null);
+                                }
                             }
                         } catch (err) {
                             console.error("Cut error", err);
-                            alert("Cut failed");
+                            alert("Cut failed: " + err.message);
                         }
+
+                        // Reset to simple select mode to execute the cut visual update
+                        // (Wait, 'simple' is our internal state, mapbox-gl-draw mode should also be reset?)
+                        // "draw_line_string" was active. We should switch to "simple_select"
+                        setTimeout(() => {
+                            drawControl.changeMode('simple_select');
+                        }, 10);
 
                         setDrawMode('simple');
                         return;
