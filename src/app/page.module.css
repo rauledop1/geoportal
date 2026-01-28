@@ -298,7 +298,7 @@
   justify-content: center;
   /* Center content vertically */
   padding-bottom: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  /* border-top: 1px solid rgba(255, 255, 255, 0.3); Removed per request */
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
 }
 

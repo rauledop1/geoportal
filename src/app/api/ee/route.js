@@ -52,24 +52,8 @@ export async function POST(req) {
       const features = result.map((f) => f.properties);
 
       const featuresWithThumbnails = await Promise.all(features.map(async (feat) => {
-        let image = ee.Image(feat.id);
-
-        // Handle Indices for Thumbnail
-        if (visOption === "NDVI") {
-          const ndvi = image.normalizedDifference([bands.NIR, bands.RED]);
-          image = ndvi;
-        } else if (visOption === "NDWI") {
-          const ndwi = image.normalizedDifference([bands.GREEN, bands.NIR]);
-          image = ndwi;
-        }
-
-        try {
-          const thumbnail = await getThumbUrl(image, visParams, geometry);
-          return { ...feat, thumbnail };
-        } catch (e) {
-          console.error(`Failed to get thumb for ${feat.id}`, e);
-          return { ...feat, thumbnail: null };
-        }
+        // We no longer generate thumbnails
+        return { ...feat, thumbnail: null };
       }));
 
       return NextResponse.json({ images: featuresWithThumbnails }, { status: 200 });
@@ -118,23 +102,7 @@ function getMapId(image, vis) {
   });
 }
 
-function getThumbUrl(image, vis, regionGeoJSON) {
-  return new Promise((resolve, reject) => {
-    const params = {
-      dimensions: '300x200',
-      format: 'jpg'
-    };
-    if (regionGeoJSON) {
-      params.region = regionGeoJSON;
-    }
-
-    // Visualize is typically necessary before getThumbURL for indices/palettes
-    image.visualize(vis).getThumbURL(params, (url, error) => {
-      if (error) reject(new Error(error));
-      else resolve(url);
-    });
-  });
-}
+// getThumbUrl removed
 
 function evaluate(obj) {
   return new Promise((resolve, reject) =>

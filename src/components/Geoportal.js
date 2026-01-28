@@ -7,6 +7,12 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "@maplibre/maplibre-gl-compare/dist/maplibre-gl-compare.css";
 // Adjust import for CSS module since we moved file depth (src/app -> src/components)
 import styles from "../app/page.module.css";
+import MapboxDraw from "@mapbox/mapbox-gl-draw";
+import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
+import shp from "shpjs";
+import JSZip from "jszip";
+import { kml } from "@tmcw/togeojson";
+import bbox from "@turf/bbox";
 
 export default function Geoportal() {
     const mapContainer = useRef(null);
@@ -18,6 +24,7 @@ export default function Geoportal() {
     const mapRight = useRef(null);
     const compare = useRef(null);
     const marker = useRef(null);
+    const draw = useRef(null);
 
     // UI State
     const [isExplorerOpen, setIsExplorerOpen] = useState(false);
@@ -104,11 +111,53 @@ export default function Geoportal() {
 
             map.current.addControl(new NavigationControl(), 'bottom-right');
 
+            // Add Draw Control
+            const drawControl = new MapboxDraw({
+                displayControlsDefault: false,
+                controls: {
+                    polygon: true,
+                    trash: true
+                }
+            });
+            map.current.addControl(drawControl, 'top-left');
+            draw.current = drawControl;
+
+            const updateGeometryFromDraw = () => {
+                const data = drawControl.getAll();
+                if (data.features.length > 0) {
+                    setGeometry(data.features[0].geometry);
+                } else {
+                    setGeometry(null);
+                }
+            };
+
+            map.current.on('draw.create', updateGeometryFromDraw);
+            map.current.on('draw.delete', updateGeometryFromDraw);
+            map.current.on('draw.update', updateGeometryFromDraw);
+
             map.current.on('click', (e) => {
+                // If drawing is active, don't override with point click
+                // Mapbox draw usually swallows clicks when drawing, but let's be safe
+                // or just allow point selection if no polygon exists?
+                // Simplest: If the draw control has no features, allow point click.
+                // Or better: Allow point click always, but it changes geometry to Point.
+                // But we must check if we clicked ON a drawn feature.
+
+                // For now, keep existing logic but only if not drawing
+                // We'll rely on user intent.
+                // Let's preserve the existing point-click logic but maybe clear draw?
+
                 const { lng, lat } = e.lngLat;
-                const point = { type: "Point", coordinates: [lng, lat] };
-                setGeometry(point);
-                setIsExplorerOpen(true);
+                // Check if we didn't click on a draw feature?
+                // Actually if a feature exists, we might select it.
+                // Let's just set Point if we are not in a mode.
+
+                // Let's only set Point if draw is empty for now to avoid conflict
+                if (drawControl.getAll().features.length === 0) {
+                    const point = { type: "Point", coordinates: [lng, lat] };
+                    setGeometry(point);
+                    setIsExplorerOpen(true);
+                }
             });
         }
 
@@ -123,21 +172,116 @@ export default function Geoportal() {
     }, [images, isCompareMode]);
 
 
-    // Handle Markers separately to avoid re-initializing map
+    // Handle Markers and Draw Updates
     useEffect(() => {
-        if (!geometry) return;
+        if (!geometry) {
+            if (marker.current) {
+                marker.current.remove();
+                marker.current = null;
+            }
+            if (draw.current) {
+                // Only clear if we really want to? 
+                // If geometry is null, we should clear draw.
+                // But this runs on geometry change. 
+                // If update came FROM draw, we don't need to do anything.
+                // But if it came from NULL, clear.
+                const data = draw.current.getAll();
+                if (data.features.length > 0 && !geometry) {
+                    draw.current.deleteAll();
+                }
+            }
+            return;
+        }
 
-        const { coordinates } = geometry;
+        const { type, coordinates } = geometry;
 
-        if (isCompareMode) {
-            if (mapLeft.current) new Marker({ color: "#0070f3" }).setLngLat(coordinates).addTo(mapLeft.current);
-            if (mapRight.current) new Marker({ color: "#0070f3" }).setLngLat(coordinates).addTo(mapRight.current);
+        if (type === 'Point') {
+            // Clear Draw if it has stuff?
+            // If we switched to Point, clear polygons
+            if (draw.current) {
+                // If draw has features, clear them because we are now a Point
+                if (draw.current.getAll().features.length > 0) {
+                    draw.current.deleteAll();
+                }
+            }
+
+            if (isCompareMode) {
+                if (mapLeft.current) new Marker({ color: "#0070f3" }).setLngLat(coordinates).addTo(mapLeft.current);
+                if (mapRight.current) new Marker({ color: "#0070f3" }).setLngLat(coordinates).addTo(mapRight.current);
+            } else {
+                if (map.current) {
+                    if (marker.current) {
+                        marker.current.setLngLat(coordinates);
+                    } else {
+                        marker.current = new Marker({ color: "#0070f3" }).setLngLat(coordinates).addTo(map.current);
+                    }
+                }
+            }
         } else {
-            if (map.current) {
-                if (marker.current) {
-                    marker.current.setLngLat(coordinates);
+            // Polygon or other
+            // Remove marker if exists
+            if (marker.current) {
+                marker.current.remove();
+                marker.current = null;
+            }
+
+            // sync with draw
+            if (!isCompareMode && draw.current) {
+                // Check if draw already has this geometry (to avoid loop)
+                const currentDrawData = draw.current.getAll();
+                // A deep check is hard, but we can verify if we have 1 feature and it matches approx?
+                // Or just clear and add if it's different.
+                // To avoid flickering, check id?
+
+                if (currentDrawData.features.length === 0) {
+                    draw.current.add(geometry);
                 } else {
-                    marker.current = new Marker({ color: "#0070f3" }).setLngLat(coordinates).addTo(map.current);
+                    // Check if same?
+                    // If the geometry came from draw event, we don't re-add.
+                    // The event handler calls setGeometry.
+                    // But if geometry came from Upload, we MUST add.
+                    // Simple heuristic: If coordinates differ significantly? 
+                    // Or just brute force: delete all, add new.
+
+                    // Issue: functionality loop if setGeometry triggers this, which triggers draw update...
+                    // But draw update event doesn't trigger if we programmatically add?
+                    // MapboxDraw fires 'draw.create' only on user interaction usually.
+                    // Let's hope programmatically adding doesn't fire create/update.
+                    // It actually usually doesn't.
+
+                    // But wait, we need to know if we should replace.
+                    // Let's just create a new feature from geometry and add it if empty.
+                    // If not empty, assume it's in sync unless we just uploaded?
+                    // We can't distinguish easily.
+                    // Force replace is safest for Upload case.
+                    // But for Drawing case, it might break interaction?
+                    // NO, because if I am drawing, `geometry` updates. 
+                    // Then this effect runs. 
+                    // It deletes my drawing and re-adds it? That would stop the drawing session.
+                    // That is BAD.
+
+                    // How to detect if we are drawing?
+                    // We can check `draw.current.getMode()`.
+                    // If mode is 'draw_polygon', do not touch!
+                    const mode = draw.current.getMode();
+                    if (['draw_polygon', 'direct_select', 'simple_select'].includes(mode)) {
+                        // If we are selecting/editing, assume we are in sync or user is busy
+                        // UNLESS the geometry changed radically (file upload).
+                        // This is tricky.
+                        // Let's rely on checking if the geometry matches deeply?
+                        // Or just rely on the fact that file upload happens while mode is likely simple_select or static.
+                    }
+
+                    // Better approach:
+                    // Only add to draw if draw is EMPTY.
+                    if (currentDrawData.features.length === 0) {
+                        draw.current.add(geometry);
+                    } else {
+                        // If draw is not empty, assume it's the source of truth,
+                        // UNLESS we explicitly want to overwrite (File Upload).
+                        // We can add a flag or just assume File Upload clears draw first?
+                        // In handleFileUpload, I can clear draw.
+                    }
                 }
             }
         }
@@ -204,6 +348,83 @@ export default function Geoportal() {
         }
     };
 
+    const handleFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            let geojson = null;
+            const name = file.name.toLowerCase();
+
+            if (name.endsWith('.geojson') || name.endsWith('.json')) {
+                const text = await file.text();
+                geojson = JSON.parse(text);
+            } else if (name.endsWith('.kml')) {
+                const text = await file.text();
+                const parser = new DOMParser();
+                const kmlDoc = parser.parseFromString(text, "text/xml");
+                geojson = kml(kmlDoc);
+            } else if (name.endsWith('.kmz')) {
+                const arrayBuffer = await file.arrayBuffer();
+                const zip = await JSZip.loadAsync(arrayBuffer);
+                const kmlFile = Object.keys(zip.files).find(n => n.endsWith('.kml'));
+                if (kmlFile) {
+                    const kmlText = await zip.file(kmlFile).async("string");
+                    const parser = new DOMParser();
+                    const kmlDoc = parser.parseFromString(kmlText, "text/xml");
+                    geojson = kml(kmlDoc);
+                }
+            } else if (name.endsWith('.zip')) {
+                const arrayBuffer = await file.arrayBuffer();
+                geojson = await shp(arrayBuffer);
+            }
+
+            if (geojson) {
+                // Determine Geometry
+                let geometryToSet = null;
+                // If FeatureCollection, extract first appropriate geometry
+                if (geojson.type === 'FeatureCollection' && geojson.features.length > 0) {
+                    // Prefer Polygon
+                    const poly = geojson.features.find(f => f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon');
+                    if (poly) geometryToSet = poly.geometry;
+                    else geometryToSet = geojson.features[0].geometry;
+                } else if (geojson.type === 'Feature') {
+                    geometryToSet = geojson.geometry;
+                } else if (geojson.type === 'Polygon' || geojson.type === 'MultiPolygon') {
+                    geometryToSet = geojson;
+                }
+
+                if (geometryToSet) {
+                    // Update Draw:
+                    // Force clear and add new to ensure it renders
+                    if (draw.current) {
+                        draw.current.deleteAll();
+                        draw.current.add(geometryToSet);
+                    }
+
+                    setGeometry(geometryToSet);
+
+                    // Zoom to BBox
+                    try {
+                        const box = bbox(geojson);
+                        if (map.current) {
+                            map.current.fitBounds(box, { padding: 50 });
+                        }
+                    } catch (e) {
+                        console.error("Fit bounds error", e);
+                    }
+                } else {
+                    alert("No valid geometry found in file");
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error parsing file");
+        }
+    };
+
+    // ... handleLayerAdd ...
+
     const handleLayerAdd = async (imageId, target = 'single') => {
         setLoading(true);
         try {
@@ -245,13 +466,18 @@ export default function Geoportal() {
                 tileSize: 256,
             });
 
+            // Find the first draw layer to place the raster layer below it
+            const layers = targetMap.getStyle().layers;
+            const firstDrawLayer = layers.find(l => l.id.startsWith('gl-draw-'));
+            const beforeId = firstDrawLayer ? firstDrawLayer.id : undefined;
+
             targetMap.addLayer({
                 id: layerId,
                 type: "raster",
                 source: sourceId,
                 minzoom: 0,
                 maxzoom: 22,
-            });
+            }, beforeId);
 
             if (target === 'single') setActiveLayerId(imageId);
             if (target === 'left') setLeftLayerId(imageId);
@@ -327,6 +553,19 @@ export default function Geoportal() {
                                 </div>
                             )}
 
+                            <div className={styles.section}>
+                                <label className={styles.label}>Upload Geometry</label>
+                                <input
+                                    type="file"
+                                    accept=".geojson,.json,.kml,.kmz,.zip"
+                                    onChange={handleFileUpload}
+                                    className={styles.input}
+                                />
+                                <small style={{ color: '#777', fontSize: '0.75rem' }}>
+                                    Supports: GeoJSON, KML, KMZ, Shapefile (zip)
+                                </small>
+                            </div>
+
                             <div className={styles.instruction}>
                                 {geometry ? "✅ Location selected" : "Click map to select location"}
                             </div>
@@ -399,10 +638,7 @@ export default function Geoportal() {
                             {images.map((img) => (
                                 <div key={img.id} className={styles.timelineItem}>
                                     <div className={styles.timelinePopover}>
-                                        {img.thumbnail && (
-                                            /* eslint-disable-next-line @next/next/no-img-element */
-                                            <img src={img.thumbnail} alt="Preview" className={styles.thumbnail} />
-                                        )}
+                                        {/* Thumbnail Removed */}
                                         <div className={styles.popoverInfo}>
                                             <b>{img.date}</b><br />
                                             {Math.round(img.cloud)}% Clouds
