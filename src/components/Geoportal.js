@@ -13,6 +13,12 @@ import shp from "shpjs";
 import JSZip from "jszip";
 import { kml } from "@tmcw/togeojson";
 import * as turf from "@turf/turf";
+import {
+    SnapPolygonMode,
+    SnapLineMode,
+    SnapPointMode,
+    SnapDirectSelect
+} from 'mapbox-gl-draw-snap-mode';
 
 export default function Geoportal() {
     const mapContainer = useRef(null);
@@ -50,6 +56,7 @@ export default function Geoportal() {
     }, []);
 
     const [drawMode, setDrawMode] = useState('simple'); // simple, cut
+    const [snappingEnabled, setSnappingEnabled] = useState(true);
     const drawModeRef = useRef(drawMode);
     useEffect(() => {
         drawModeRef.current = drawMode;
@@ -131,6 +138,20 @@ export default function Geoportal() {
             // Add Draw Control
             const drawControl = new MapboxDraw({
                 displayControlsDefault: false,
+                userProperties: true,
+                modes: {
+                    ...MapboxDraw.modes,
+                    draw_polygon: SnapPolygonMode,
+                    draw_line_string: SnapLineMode,
+                    draw_point: SnapPointMode,
+                    direct_select: SnapDirectSelect
+                },
+                snap: true,
+                snapOptions: {
+                    snapPx: 15,
+                    snapToMidPoints: true,
+                    snapVertexPriorityDistance: 0.0025,
+                },
                 controls: {
                     polygon: true,
                     trash: true
@@ -332,6 +353,9 @@ export default function Geoportal() {
             map.current.on('draw.delete', updateGeometryFromDraw);
             map.current.on('draw.update', updateGeometryFromDraw);
 
+            // Initial snap state
+            drawControl.options.snap = snappingEnabled;
+
             map.current.on('click', (e) => {
                 // If drawing is active, don't override with point click
                 // Mapbox draw usually swallows clicks when drawing, but let's be safe
@@ -360,6 +384,13 @@ export default function Geoportal() {
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isCompareMode]);
+
+    // Toggle Snapping
+    useEffect(() => {
+        if (draw.current) {
+            draw.current.options.snap = snappingEnabled;
+        }
+    }, [snappingEnabled]);
 
     // Reset Compare Mode if images < 2
     useEffect(() => {
@@ -1045,6 +1076,18 @@ export default function Geoportal() {
                                         <span className={styles.toolIcon}>🗑️</span>
                                         <span>Delete Selected</span>
                                     </div>
+
+                                    <div className={styles.checkboxContainer} style={{ marginTop: '10px' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={snappingEnabled}
+                                                onChange={(e) => setSnappingEnabled(e.target.checked)}
+                                            />
+                                            <span>Energy Snapping</span>
+                                        </label>
+                                    </div>
+
 
                                     <div className={styles.instruction}>
                                         <small>
