@@ -92,6 +92,7 @@ export default function Geoportal() {
         mapRight.current = null;
         compare.current = null;
         marker.current = null;
+        draw.current = null; // Prevent stale access to draw control
 
         const mapStyle = "https://demotiles.maplibre.org/style.json";
         const initialCenter = geometry ? geometry.coordinates : [-71.5, -33.5];
@@ -100,55 +101,63 @@ export default function Geoportal() {
         if (isCompareMode) {
             // Use setTimeout to allow DOM to settle
             const timer = setTimeout(() => {
-                // Check if containers are ready
-                if (!leftMapContainer.current || !rightMapContainer.current) return;
-
-                // Initialize Two Maps
-                mapLeft.current = new Map({
-                    container: leftMapContainer.current,
-                    style: mapStyle,
-                    center: initialCenter,
-                    zoom: initialZoom,
-                    attributionControl: false
-                });
-
-                mapRight.current = new Map({
-                    container: rightMapContainer.current,
-                    style: mapStyle,
-                    center: initialCenter,
-                    zoom: initialZoom,
-                    attributionControl: false
-                });
-
-                // Sync interactions via Compare
                 try {
+                    // Check if containers are ready
+                    if (!leftMapContainer.current || !rightMapContainer.current || !mapContainer.current) return;
+
+                    // Initialize Two Maps
+                    mapLeft.current = new Map({
+                        container: leftMapContainer.current,
+                        style: mapStyle,
+                        center: initialCenter,
+                        zoom: initialZoom,
+                        attributionControl: false
+                    });
+
+                    mapRight.current = new Map({
+                        container: rightMapContainer.current,
+                        style: mapStyle,
+                        center: initialCenter,
+                        zoom: initialZoom,
+                        attributionControl: false
+                    });
+
+                    // Sync interactions via Compare
                     // Ensure mapContainer matches the wrapper for both
                     compare.current = new Compare(mapLeft.current, mapRight.current, mapContainer.current, {});
+
+                    // Restore Active Layer to Left Map if exists
+                    if (mapLeft.current) {
+                        mapLeft.current.once('load', () => {
+                            if (activeLayerId) {
+                                console.log("Restoring active layer to Left Map:", activeLayerId);
+                                setLeftLayerId(activeLayerId); // SYNC STATE
+                                handleLayerAdd(activeLayerId, 'left');
+                            }
+                        });
+
+                        // Add click listener to Left Map (primary for interaction)
+                        mapLeft.current.on('click', (e) => {
+                            const { lng, lat } = e.lngLat;
+                            const point = { type: "Point", coordinates: [lng, lat] };
+                            setGeometry(point);
+                            setIsExplorerOpen(true);
+                        });
+                    }
                 } catch (err) {
-                    console.error("Error initializing Compare:", err);
-                }
-
-                // Restore Active Layer to Left Map if exists
-                if (mapLeft.current) {
-                    mapLeft.current.once('load', () => {
-                        if (activeLayerId) {
-                            console.log("Restoring active layer to Left Map:", activeLayerId);
-                            setLeftLayerId(activeLayerId); // SYNC STATE
-                            handleLayerAdd(activeLayerId, 'left');
-                        }
-                    });
-
-                    // Add click listener to Left Map (primary for interaction)
-                    mapLeft.current.on('click', (e) => {
-                        const { lng, lat } = e.lngLat;
-                        const point = { type: "Point", coordinates: [lng, lat] };
-                        setGeometry(point);
-                        setIsExplorerOpen(true);
-                    });
+                    console.error("Critical Swipe Mode Initialization Error:", err);
                 }
             }, 0);
 
-            return () => clearTimeout(timer); // Cleanup timer
+            return () => {
+                clearTimeout(timer); // Cleanup timer
+                if (compare.current) compare.current.remove();
+                if (mapLeft.current) mapLeft.current.remove();
+                if (mapRight.current) mapRight.current.remove();
+                mapLeft.current = null;
+                mapRight.current = null;
+                compare.current = null;
+            };
 
         } else {
             // Initialize Single Map
