@@ -12,9 +12,7 @@ import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import shp from "shpjs";
 import JSZip from "jszip";
 import { kml } from "@tmcw/togeojson";
-import bbox from "@turf/bbox";
-import difference from "@turf/difference";
-import buffer from "@turf/buffer";
+import * as turf from "@turf/turf";
 
 export default function Geoportal() {
     const mapContainer = useRef(null);
@@ -259,7 +257,7 @@ export default function Geoportal() {
                             );
 
                             // Buffer the cutter line (approx 10 meters)
-                            const cutterPoly = buffer(cutter, 0.01, { units: 'kilometers' });
+                            const cutterPoly = turf.buffer(cutter, 0.01, { units: 'kilometers' });
 
                             const newFeatures = [];
                             const idsToDelete = [cutter.id]; // Always remove the cutter line
@@ -267,7 +265,7 @@ export default function Geoportal() {
                             let cutPerformed = false;
 
                             targets.forEach(target => {
-                                const diff = difference(target, cutterPoly);
+                                const diff = turf.difference(target, cutterPoly);
 
                                 if (diff) {
                                     idsToDelete.push(target.id);
@@ -604,7 +602,7 @@ export default function Geoportal() {
 
                     // Zoom to BBox
                     try {
-                        const box = bbox(geojson);
+                        const box = turf.bbox(geojson);
                         if (map.current) {
                             map.current.fitBounds(box, { padding: 50 });
                         }
