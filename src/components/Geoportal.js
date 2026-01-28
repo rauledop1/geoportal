@@ -402,6 +402,15 @@ export default function Geoportal() {
 
                         draw.current = drawControl; // Persist for helper functions
 
+                        // Restore Geometry if exists
+                        if (geometry) {
+                            try {
+                                drawControl.add(geometry);
+                            } catch (err) {
+                                console.error("Error restoring geometry in Swipe Mode:", err);
+                            }
+                        }
+
                         // Event Listeners for Draw
                         const onDrawUpdate = (e) => handleDrawCreate(e, drawControl);
 
@@ -466,7 +475,13 @@ export default function Geoportal() {
             draw.current = drawControl;
 
             // Restoring previous geometry if exists
-            // ... (existing logic for restoring geometry into draw)
+            if (geometry) {
+                try {
+                    drawControl.add(geometry);
+                } catch (err) {
+                    console.error("Error restoring geometry in Single Mode:", err);
+                }
+            }
 
             const updateGeometryFromDraw = (e) => handleDrawCreate(e, drawControl);
 
