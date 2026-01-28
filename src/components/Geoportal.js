@@ -98,49 +98,57 @@ export default function Geoportal() {
         const initialZoom = 8;
 
         if (isCompareMode) {
-            // Check if containers are ready
-            if (!leftMapContainer.current || !rightMapContainer.current) return;
+            // Use setTimeout to allow DOM to settle
+            const timer = setTimeout(() => {
+                // Check if containers are ready
+                if (!leftMapContainer.current || !rightMapContainer.current) return;
 
-            // Initialize Two Maps
-            mapLeft.current = new Map({
-                container: leftMapContainer.current,
-                style: mapStyle,
-                center: initialCenter,
-                zoom: initialZoom,
-                attributionControl: false
-            });
+                // Initialize Two Maps
+                mapLeft.current = new Map({
+                    container: leftMapContainer.current,
+                    style: mapStyle,
+                    center: initialCenter,
+                    zoom: initialZoom,
+                    attributionControl: false
+                });
 
-            mapRight.current = new Map({
-                container: rightMapContainer.current,
-                style: mapStyle,
-                center: initialCenter,
-                zoom: initialZoom,
-                attributionControl: false
-            });
+                mapRight.current = new Map({
+                    container: rightMapContainer.current,
+                    style: mapStyle,
+                    center: initialCenter,
+                    zoom: initialZoom,
+                    attributionControl: false
+                });
 
-            // Sync interactions via Compare
-            try {
-                // Ensure mapContainer matches the wrapper for both
-                compare.current = new Compare(mapLeft.current, mapRight.current, mapContainer.current, {});
-            } catch (err) {
-                console.error("Error initializing Compare:", err);
-            }
-
-            // Restore Active Layer to Left Map if exists
-            mapLeft.current.once('load', () => {
-                if (activeLayerId) {
-                    console.log("Restoring active layer to Left Map:", activeLayerId);
-                    handleLayerAdd(activeLayerId, 'left');
+                // Sync interactions via Compare
+                try {
+                    // Ensure mapContainer matches the wrapper for both
+                    compare.current = new Compare(mapLeft.current, mapRight.current, mapContainer.current, {});
+                } catch (err) {
+                    console.error("Error initializing Compare:", err);
                 }
-            });
 
-            // Add click listener to Left Map (primary for interaction)
-            mapLeft.current.on('click', (e) => {
-                const { lng, lat } = e.lngLat;
-                const point = { type: "Point", coordinates: [lng, lat] };
-                setGeometry(point);
-                setIsExplorerOpen(true);
-            });
+                // Restore Active Layer to Left Map if exists
+                if (mapLeft.current) {
+                    mapLeft.current.once('load', () => {
+                        if (activeLayerId) {
+                            console.log("Restoring active layer to Left Map:", activeLayerId);
+                            setLeftLayerId(activeLayerId); // SYNC STATE
+                            handleLayerAdd(activeLayerId, 'left');
+                        }
+                    });
+
+                    // Add click listener to Left Map (primary for interaction)
+                    mapLeft.current.on('click', (e) => {
+                        const { lng, lat } = e.lngLat;
+                        const point = { type: "Point", coordinates: [lng, lat] };
+                        setGeometry(point);
+                        setIsExplorerOpen(true);
+                    });
+                }
+            }, 0);
+
+            return () => clearTimeout(timer); // Cleanup timer
 
         } else {
             // Initialize Single Map
