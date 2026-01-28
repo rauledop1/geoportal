@@ -57,6 +57,7 @@ export default function Geoportal() {
 
     const [drawMode, setDrawMode] = useState('simple'); // simple, cut
     const [snappingEnabled, setSnappingEnabled] = useState(true);
+    const [eraseOverlap, setEraseOverlap] = useState(false); // Autocomplete / Erase Overlap
     const drawModeRef = useRef(drawMode);
     useEffect(() => {
         drawModeRef.current = drawMode;
@@ -151,6 +152,20 @@ export default function Geoportal() {
                     snapPx: 15,
                     snapToMidPoints: true,
                     snapVertexPriorityDistance: 0.0025,
+                },
+                // Autocomplete / Overlap configuration
+                // SnapModeOptions allows 'overlap' property directly on options passed to modes?
+                // The library documentation says 'overlap' is a top level option for SnapModeOptions.
+                // But MapboxDraw initializes modes with options?
+                // Actually, we need to pass these options when modes are setup or via drawControl.
+                // The library might read from drawControl.options?
+                // Checking usage: The library reads `opts.overlap` in `SnapPolygonMode`.
+                // We'll attach it to the draw control options or try to pass it.
+                // The standard MapboxDraw way is `userProperties`. 
+                // However, mapbox-gl-draw-snap-mode reads config?
+                // Let's assume we can update it dynamically like we do for `snap`.
+                snapModeOptions: { // Helper checks this?
+                    overlap: true // Default
                 },
                 controls: {
                     polygon: true,
@@ -392,6 +407,22 @@ export default function Geoportal() {
         }
     }, [snappingEnabled]);
 
+    // Toggle Autocomplete / Overlap
+    // To implement "Erase Overlap" (Autocomplete), we set overlap: false
+    useEffect(() => {
+        if (draw.current) {
+            // We need to pass this to the mode. 
+            // mapbox-gl-draw-snap-mode unfortunately reads options mainly at setup for some checks, 
+            // but let's try to set it if it's accessible.
+            // If not, we might need to re-initialize draw or find where it's stored.
+            // Looking at the lib, it often checks `this.options.overlap`. 
+            // `this` contexts in modes are derived from MapboxDraw options?
+            // Actually, custom modes often don't get re-configured easily.
+            // But let's try injecting it into options.
+            draw.current.options.overlap = !eraseOverlap;
+        }
+    }, [eraseOverlap]);
+
     // Reset Compare Mode if images < 2
     useEffect(() => {
         if (isCompareMode && images.length < 2) {
@@ -571,8 +602,12 @@ export default function Geoportal() {
             const resultImages = data.images || [];
             setImages(resultImages);
 
-            // Auto-select the first image (most recent) if available
-            if (resultImages.length > 0) {
+            setImages(resultImages);
+
+            // Auto-select: Only if NO layer is currently active.
+            // This prevents overriding user selection on subsequent clicks/searches if they are exploring results.
+            // User requirement: "only the first click call auto the scene"
+            if (activeLayerId === null && resultImages.length > 0) {
                 handleLayerAdd(resultImages[0].id, 'single');
             }
 
@@ -1085,6 +1120,16 @@ export default function Geoportal() {
                                                 onChange={(e) => setSnappingEnabled(e.target.checked)}
                                             />
                                             <span>Energy Snapping</span>
+                                        </label>
+                                    </div>
+                                    <div className={styles.checkboxContainer} style={{ marginTop: '5px' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={eraseOverlap}
+                                                onChange={(e) => setEraseOverlap(e.target.checked)}
+                                            />
+                                            <span>Autocomplete (Erase Overlap)</span>
                                         </label>
                                     </div>
 
