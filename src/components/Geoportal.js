@@ -256,8 +256,9 @@ export default function Geoportal() {
                                 (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
                             );
 
-                            // Buffer the cutter line (approx 10 meters)
-                            const cutterPoly = turf.buffer(cutter, 0.01, { units: 'kilometers' });
+                            // Buffer the cutter line (minimal buffer to avoid gap)
+                            // 1mm = 0.000001 km
+                            const cutterPoly = turf.buffer(cutter, 0.000001, { units: 'kilometers' });
 
                             const newFeatures = [];
                             const idsToDelete = [cutter.id]; // Always remove the cutter line
@@ -536,7 +537,14 @@ export default function Geoportal() {
 
             if (!res.ok) throw new Error("Search failed");
             const data = await res.json();
-            setImages(data.images || []);
+            const resultImages = data.images || [];
+            setImages(resultImages);
+
+            // Auto-select the first image (most recent) if available
+            if (resultImages.length > 0) {
+                handleLayerAdd(resultImages[0].id, 'single');
+            }
+
         } catch (e) {
             setError(e.message);
         } finally {
@@ -782,15 +790,17 @@ export default function Geoportal() {
         }
     }, [visOption]);
 
-    // 2. On Sensor Change: Re-run search if geometry exists
+    // 2. On Sensor Change Or Geometry Change: Re-run search if geometry exists
     useEffect(() => {
         // Prevent initial run or redundant runs?
         // If geometry is set and we are not already loading...
+        // Also check if geometry is valid (not null)
         if (geometry && !loading) {
-            console.log("Auto-updating search for sensor...");
+            console.log("Auto-updating search...");
             handleSearch();
         }
-    }, [sensor]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sensor, geometry]);
 
 
     // Timeline Interactions
