@@ -18,11 +18,12 @@ export async function POST(req) {
         .sort("CLOUDY_PIXEL_PERCENTAGE");
 
       // Extract necessary metadata
-      const imageList = col.limit(50); // Limit to 50
+      const imageList = col.limit(50);
 
       const featureCollection = imageList.map((img) => {
         return ee.Feature(null, {
-          id: img.id(),
+          // Construct Full ID as 'COPERNICUS/S2_SR/' + system:index
+          id: ee.String("COPERNICUS/S2_SR/").cat(img.get("system:index")),
           date: img.date().format("YYYY-MM-dd"),
           cloud: img.get("CLOUDY_PIXEL_PERCENTAGE"),
         });
@@ -33,6 +34,7 @@ export async function POST(req) {
 
       // Generate thumbnails for each image
       const featuresWithThumbnails = await Promise.all(features.map(async (feat) => {
+        // Now feat.id should be the full path e.g. COPERNICUS/S2_SR/2023...
         const image = ee.Image(feat.id);
         const vis = {
           bands: ['B8', 'B4', 'B3'],
@@ -41,7 +43,13 @@ export async function POST(req) {
           gamma: 1.4,
         };
         try {
-          const thumbnail = await getThumbUrl(image, vis);
+          // Pass geometry as region to focus thumbnail
+          // Must be a GeoJSON object or ee.Geometry, but getThumbURL expects JSON/coords if client-side or specific format
+          // Since we are server-side with Node, passing the 'geometry' object (GeoJSON) directly to region might need ee.Geometry(geometry) serialization?
+          // getThumbURL options: region must be GeoJSON or WKT or ... 
+          // Actually it often accepts a pure GeoJSON object.
+
+          const thumbnail = await getThumbUrl(image, vis, geometry);
           return { ...feat, thumbnail };
         } catch (e) {
           console.error(`Failed to get thumb for ${feat.id}`, e);
@@ -53,6 +61,7 @@ export async function POST(req) {
     }
 
     if (action === "getMap") {
+      // imageId coming from frontend should now be full path
       const image = ee.Image(imageId);
       const vis = {
         bands: ['B8', 'B4', 'B3'],
@@ -92,12 +101,17 @@ function getMapId(image, vis) {
   });
 }
 
-function getThumbUrl(image, vis) {
+function getThumbUrl(image, vis, regionGeoJSON) {
   return new Promise((resolve, reject) => {
-    image.visualize(vis).getThumbURL({
-      dimensions: '100x100',
+    const params = {
+      dimensions: '300x200',
       format: 'jpg'
-    }, (url, error) => {
+    };
+    if (regionGeoJSON) {
+      params.region = regionGeoJSON;
+    }
+
+    image.visualize(vis).getThumbURL(params, (url, error) => {
       if (error) reject(new Error(error));
       else resolve(url);
     });
