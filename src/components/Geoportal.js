@@ -13,6 +13,8 @@ import shp from "shpjs";
 import JSZip from "jszip";
 import { kml } from "@tmcw/togeojson";
 import bbox from "@turf/bbox";
+import difference from "@turf/difference";
+import { useMemo } from "react";
 
 export default function Geoportal() {
     const mapContainer = useRef(null);
@@ -38,6 +40,8 @@ export default function Geoportal() {
 
     const [startDate, setStartDate] = useState(thirtyDaysAgo.toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
+
+    const [drawMode, setDrawMode] = useState('simple'); // simple, cut
 
     const [cloudCover, setCloudCover] = useState(60);
     const [sensor, setSensor] = useState("Sentinel-2");
@@ -118,13 +122,152 @@ export default function Geoportal() {
                 controls: {
                     polygon: true,
                     trash: true
-                }
+                },
+                // Styles for custom node visibility
+                styles: [
+                    // ACTIVE (being drawn)
+                    // line stroke
+                    {
+                        "id": "gl-draw-line",
+                        "type": "line",
+                        "filter": ["all", ["==", "$type", "LineString"], ["!=", "mode", "static"]],
+                        "layout": {
+                            "line-cap": "round",
+                            "line-join": "round"
+                        },
+                        "paint": {
+                            "line-color": "#D20C0C",
+                            "line-dasharray": [0.2, 2],
+                            "line-width": 2
+                        }
+                    },
+                    // polygon fill
+                    {
+                        "id": "gl-draw-polygon-fill",
+                        "type": "fill",
+                        "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
+                        "paint": {
+                            "fill-color": "#D20C0C",
+                            "fill-outline-color": "#D20C0C",
+                            "fill-opacity": 0.1
+                        }
+                    },
+                    // polygon mid points
+                    {
+                        "id": "gl-draw-polygon-midpoint",
+                        "type": "circle",
+                        "filter": ["all",
+                            ["==", "$type", "Point"],
+                            ["==", "meta", "midpoint"]],
+                        "paint": {
+                            "circle-radius": 5, // Larger
+                            "circle-color": "#fbb03b"
+                        }
+                    },
+                    // polygon outline stroke
+                    // This doesn't style the first edge of the polygon, which uses the line stroke.
+                    {
+                        "id": "gl-draw-polygon-stroke-active",
+                        "type": "line",
+                        "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
+                        "layout": {
+                            "line-cap": "round",
+                            "line-join": "round"
+                        },
+                        "paint": {
+                            "line-color": "#D20C0C",
+                            "line-dasharray": [0.2, 2],
+                            "line-width": 2
+                        }
+                    },
+                    // vertex point halos
+                    {
+                        "id": "gl-draw-polygon-and-line-vertex-halo-active",
+                        "type": "circle",
+                        "filter": ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"], ["!=", "mode", "static"]],
+                        "paint": {
+                            "circle-radius": 8, // Larger halo
+                            "circle-color": "#FFF"
+                        }
+                    },
+                    // vertex points
+                    {
+                        "id": "gl-draw-polygon-and-line-vertex-active",
+                        "type": "circle",
+                        "filter": ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"], ["!=", "mode", "static"]],
+                        "paint": {
+                            "circle-radius": 6, // Larger vertex
+                            "circle-color": "#D20C0C",
+                        }
+                    },
+                    // INACTIVE (static)
+                    {
+                        "id": "gl-draw-polygon-fill-static",
+                        "type": "fill",
+                        "filter": ["all", ["==", "$type", "Polygon"], ["==", "mode", "static"]],
+                        "paint": {
+                            "fill-color": "#000",
+                            "fill-outline-color": "#000",
+                            "fill-opacity": 0.1
+                        }
+                    },
+                    {
+                        "id": "gl-draw-polygon-stroke-static",
+                        "type": "line",
+                        "filter": ["all", ["==", "$type", "Polygon"], ["==", "mode", "static"]],
+                        "layout": {
+                            "line-cap": "round",
+                            "line-join": "round"
+                        },
+                        "paint": {
+                            "line-color": "#000",
+                            "line-width": 3
+                        }
+                    }
+                ]
             });
             map.current.addControl(drawControl, 'top-left');
             draw.current = drawControl;
 
-            const updateGeometryFromDraw = () => {
+            const updateGeometryFromDraw = (e) => {
                 const data = drawControl.getAll();
+
+                // If in CUT mode
+                if (drawMode === 'cut' && e.type === 'draw.create') {
+                    // The last feature drawn is the cutter
+                    // The existing feature is what we want to cut
+                    const all = data.features;
+                    if (all.length >= 2) {
+                        const cutter = all[all.length - 1]; // Latest
+                        const target = all[all.length - 2]; // Previous (we assume 1 target for now or just merge all others?)
+                        // Let's assume strict 1 Cutter 1 Target scenario for simplicity or cut from "current geometry"
+
+                        // We should use the 'geometry' state as the source of truth for the target?
+                        // But 'draw' has everything.
+                        // Let's take the cutter, remove it from draw, subtract it from the previous geom.
+
+                        try {
+                            const diff = difference(target, cutter);
+                            if (diff) {
+                                drawControl.deleteAll();
+                                drawControl.add(diff);
+                                setGeometry(diff.geometry);
+                            } else {
+                                // Cut failed or eliminated everything
+                                alert("Cut resulted in empty geometry");
+                            }
+                        } catch (err) {
+                            console.error("Cut error", err);
+                            alert("Cut failed");
+                        }
+
+                        // Reset mode
+                        setDrawMode('simple');
+                        return; // Done
+                    }
+                }
+
+                // Normal update
                 if (data.features.length > 0) {
                     setGeometry(data.features[0].geometry);
                 } else {
@@ -497,8 +640,59 @@ export default function Geoportal() {
         return `rgb(${val}, ${val}, ${val})`;
     };
 
+    // Timeline Aggregation Logic
+    const groupedImages = useMemo(() => {
+        if (!images || images.length === 0) return [];
+
+        let mode = 'day';
+        if (images.length > 500) mode = 'year';
+        else if (images.length > 50) mode = 'month';
+
+        if (mode === 'day') return images;
+
+        const groups = {};
+
+        images.forEach(img => {
+            const date = new Date(img.date);
+            let key;
+            if (mode === 'year') key = date.getFullYear().toString();
+            else key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+            if (!groups[key]) {
+                groups[key] = {
+                    id: key, // Use key as ID for group
+                    date: key, // Display label
+                    cloud: 0,
+                    count: 0,
+                    images: []
+                };
+            }
+            groups[key].cloud += img.cloud;
+            groups[key].count++;
+            groups[key].images.push(img);
+        });
+
+        return Object.values(groups).map(g => ({
+            ...g,
+            cloud: g.cloud / g.count, // Average cloud
+            isGroup: true
+        })).sort((a, b) => a.date.localeCompare(b.date)); // Ensure sorted
+
+    }, [images]);
+
+
     // Timeline Interactions
-    const handleTimelineClick = (imgId, side) => {
+    const handleTimelineClick = (item, side) => {
+        let imgId = item.id;
+
+        // If group, pick select best image (lowest cloud) ?? or first?
+        // Let's pick lowest cloud
+        if (item.isGroup) {
+            const best = item.images.reduce((prev, curr) => prev.cloud < curr.cloud ? prev : curr);
+            imgId = best.id;
+            console.log(`Auto-selected image from group ${item.date}:`, best);
+        }
+
         if (isCompareMode) {
             handleLayerAdd(imgId, side);
         } else {
@@ -508,8 +702,28 @@ export default function Geoportal() {
 
     {/* Draw Mode Handlers */ }
     const handleDrawPolygon = () => {
+        setDrawMode('simple');
         if (draw.current) {
+            draw.current.deleteAll(); // Start fresh or keep? "Draw Polygon" typically starts new.
             draw.current.changeMode('draw_polygon');
+        }
+    };
+
+    const handleCutPolygon = () => {
+        if (!geometry) {
+            alert("Draw a base polygon first!");
+            return;
+        }
+        setDrawMode('cut');
+        if (draw.current) {
+            // Start drawing the cutter
+            draw.current.changeMode('draw_polygon');
+        }
+    };
+
+    const handleFinishDraw = () => {
+        if (draw.current) {
+            draw.current.changeMode('simple_select');
         }
     };
 
@@ -697,6 +911,14 @@ export default function Geoportal() {
                                         <span className={styles.toolIcon}>⬠</span>
                                         <span>Draw Polygon</span>
                                     </div>
+                                    <div className={`${styles.toolBtn} ${drawMode === 'cut' ? styles.toolBtnActive : ''}`} onClick={handleCutPolygon}>
+                                        <span className={styles.toolIcon}>✂️</span>
+                                        <span>Cut Polygon (Draw Cutter)</span>
+                                    </div>
+                                    <div className={styles.toolBtn} onClick={handleFinishDraw}>
+                                        <span className={styles.toolIcon}>✅</span>
+                                        <span>Finish Drawing (Autocomplete)</span>
+                                    </div>
                                     <div className={styles.toolBtn} onClick={handleDeleteSelected}>
                                         <span className={styles.toolIcon}>🗑️</span>
                                         <span>Delete Selected</span>
@@ -718,24 +940,25 @@ export default function Geoportal() {
                 </div>
 
                 {/* Timeline Results */}
-                {images.length > 0 && (
+                {groupedImages.length > 0 && (
                     <div className={styles.timelineContainer}>
                         <div className={styles.timelineScroll}>
-                            {images.map((img) => (
+                            {groupedImages.map((img) => (
                                 <div key={img.id} className={styles.timelineItem}>
                                     <div className={styles.timelinePopover}>
                                         {/* Thumbnail Removed */}
                                         <div className={styles.popoverInfo}>
                                             <b>{img.date}</b><br />
                                             {Math.round(img.cloud)}% Clouds
+                                            {img.isGroup && <><br /><small>({img.count} items)</small></>}
                                         </div>
 
                                         {!isCompareMode ? (
-                                            <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img.id)}>Visualize</button>
+                                            <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'single')}>Visualize</button>
                                         ) : (
                                             <div className={styles.popoverRow}>
-                                                <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img.id, 'left')}>Left</button>
-                                                <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img.id, 'right')}>Right</button>
+                                                <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'left')}>Left</button>
+                                                <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'right')}>Right</button>
                                             </div>
                                         )}
                                     </div>
