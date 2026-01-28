@@ -478,6 +478,8 @@ export default function Geoportal() {
             drawControl.options.snap = snappingEnabled;
 
             map.current.on('click', (e) => {
+                // Prevent interfering with drawing modes
+                if (drawControl.getMode() !== 'simple_select') return;
                 // If drawing is active, don't override with point click
                 // Mapbox draw usually swallows clicks when drawing, but let's be safe
                 // or just allow point selection if no polygon exists?
