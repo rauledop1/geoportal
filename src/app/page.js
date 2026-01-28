@@ -1,68 +1,213 @@
 "use client";
 
-import { bbox } from "@turf/turf";
-import { Map } from "maplibre-gl";
+import { useEffect, useRef, useState } from "react";
+import { Map, Marker, NavigationControl } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useEffect } from "react";
+import styles from "./page.module.css";
 
 export default function Home() {
-  // Map div id
-  const mapIdDiv = "map";
+  const mapContainer = useRef(null);
+  const map = useRef(null);
+  const marker = useRef(null);
 
-  // Earth engine layer id
-  const eeLayerId = "ee-layer";
+  // State
+  const [startDate, setStartDate] = useState("2023-05-01");
+  const [endDate, setEndDate] = useState("2023-07-31");
+  const [cloudCover, setCloudCover] = useState(60);
+  const [geometry, setGeometry] = useState(null); // GeoJSON point
+  const [images, setImages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [activeLayerId, setActiveLayerId] = useState(null);
 
-  // Map container style
-  const mapStyle = {
-    height: "100%",
-    width: "100%",
-  };
-
-  // Do the process after the component is mounted
+  // Initialize Map
   useEffect(() => {
-    // Load new map
-    const map = new Map({
-      container: mapIdDiv,
-      zoom: 4,
-      center: [117, 0],
+    if (map.current) return;
+
+    map.current = new Map({
+      container: mapContainer.current,
       style: "https://demotiles.maplibre.org/style.json",
+      center: [-71.5, -33.5], // Default center (Chile roughly)
+      zoom: 8,
     });
 
-    // When map is loaded fetch the tile and add it to he map
-    map.on("load", async () => {
-      // Fetch to folder api/ee
-      const res = await fetch("/api/ee");
+    map.current.addControl(new NavigationControl());
 
-      // Get the body of the response
-      const { urlFormat, geojson, message } = await res.json();
+    map.current.on('click', (e) => {
+      const { lng, lat } = e.lngLat;
+      const point = {
+        type: "Point",
+        coordinates: [lng, lat]
+      };
 
-      // If the process is error then show the error message
-      if (!res.ok) {
-        throw new Error(message);
+      setGeometry(point);
+
+      // Update marker
+      if (marker.current) {
+        marker.current.setLngLat([lng, lat]);
+      } else {
+        marker.current = new Marker({ color: "#0070f3" })
+          .setLngLat([lng, lat])
+          .addTo(map.current);
+      }
+    });
+
+  }, []);
+
+  const handleSearch = async () => {
+    if (!geometry) {
+      setError("Please select a location on the map first.");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    setImages([]);
+
+    try {
+      const res = await fetch("/api/ee", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "search",
+          startDate,
+          endDate,
+          cloudCover,
+          geometry
+        })
+      });
+
+      if (!res.ok) throw new Error("Search failed");
+      const data = await res.json();
+      setImages(data.images || []);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLayerAdd = async (imageId) => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/ee", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "getMap",
+          imageId
+        })
+      });
+
+      if (!res.ok) throw new Error("Failed to get layer");
+      const { urlFormat } = await res.json();
+
+      const layerId = "ee-layer";
+      const sourceId = "ee-source";
+
+      // Remove existing layer if any
+      if (map.current.getLayer(layerId)) {
+        map.current.removeLayer(layerId);
+      }
+      if (map.current.getSource(sourceId)) {
+        map.current.removeSource(sourceId);
       }
 
-      // If it is good then add the layer url to the map
-      map.addSource(eeLayerId, {
+      map.current.addSource(sourceId, {
         type: "raster",
         tiles: [urlFormat],
         tileSize: 256,
       });
 
-      // After the source is added then add it as map layer
-      map.addLayer({
+      map.current.addLayer({
+        id: layerId,
         type: "raster",
-        source: eeLayerId,
-        id: eeLayerId,
+        source: sourceId,
         minzoom: 0,
-        maxzoom: 20,
+        maxzoom: 22,
       });
 
-      // Then zoom it to the map layer
-      // Change geojson to bbox
-      const bounds = bbox(geojson);
-      map.fitBounds(bounds);
-    });
-  }, []); // Make the dependecies to [] so that it is only loaded once
+      setActiveLayerId(imageId);
 
-  return <div id={mapIdDiv} style={mapStyle}></div>;
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className={styles.main}>
+      {/* Sidebar */}
+      <div className={styles.sidebar}>
+        <h1 className={styles.title}>Sentinel-2 Browser</h1>
+
+        <div className={styles.section}>
+          <div className={styles.instruction}>
+            1. Click on map to select region<br />
+            2. Configure filters<br />
+            3. Search and Select Image
+          </div>
+        </div>
+
+        <div className={styles.section}>
+          <label className={styles.label}>Start Date</label>
+          <input
+            type="date"
+            className={styles.input}
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+
+          <label className={styles.label}>End Date</label>
+          <input
+            type="date"
+            className={styles.input}
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+          />
+
+          <label className={styles.label}>Max Cloud Cover: {cloudCover}%</label>
+          <input
+            type="range"
+            min="0" max="100"
+            className={styles.range}
+            value={cloudCover}
+            onChange={(e) => setCloudCover(Number(e.target.value))}
+          />
+        </div>
+
+        {error && <div className={styles.error}>{error}</div>}
+
+        <button
+          className={styles.button}
+          onClick={handleSearch}
+          disabled={loading}
+        >
+          {loading ? "Processing..." : "Search Images"}
+        </button>
+
+        <div className={styles.imageList}>
+          {images.map((img) => (
+            <div key={img.id} className={styles.imageCard}>
+              <div className={styles.cardHeader}>
+                <span className={styles.cardDate}>{img.date}</span>
+                <span className={styles.cardCloud}>{Math.round(img.cloud)}% clouds</span>
+              </div>
+              <button
+                className={img.id === activeLayerId ? styles.buttonSecondary : styles.button}
+                onClick={() => handleLayerAdd(img.id)}
+                style={{ fontSize: '0.8rem', padding: '5px' }}
+              >
+                {img.id === activeLayerId ? "Active Layer" : "Show on Map"}
+              </button>
+            </div>
+          ))}
+          {images.length === 0 && !loading && <p style={{ color: '#888', textAlign: 'center' }}>No images found</p>}
+        </div>
+      </div>
+
+      {/* Map */}
+      <div ref={mapContainer} className={styles.mapContainer} />
+    </div>
+  );
 }
