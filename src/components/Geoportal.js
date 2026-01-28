@@ -57,6 +57,7 @@ export default function Geoportal() {
 
     const [drawMode, setDrawMode] = useState('simple'); // simple, cut
     const [snappingEnabled, setSnappingEnabled] = useState(true);
+    const [snapPixelDistance, setSnapPixelDistance] = useState(15);
     const [eraseOverlap, setEraseOverlap] = useState(false); // Autocomplete / Erase Overlap
     const drawModeRef = useRef(drawMode);
     useEffect(() => {
@@ -149,7 +150,7 @@ export default function Geoportal() {
                 },
                 snap: true,
                 snapOptions: {
-                    snapPx: 15,
+                    snapPx: snapPixelDistance,
                     snapToMidPoints: true,
                     snapVertexPriorityDistance: 0.0025,
                 },
@@ -279,6 +280,73 @@ export default function Geoportal() {
 
             const updateGeometryFromDraw = (e) => {
                 const data = drawControl.getAll();
+                const features = data.features;
+
+                // AUTOCOMPLETE / ERASE OVERLAP LOGIC
+                // Check if we need to clip the *newly created/updated* feature against others.
+                if (eraseOverlap && (e.type === 'draw.create' || e.type === 'draw.update')) {
+                    const modifiedFeatures = e.features; // Array of features being created/updated
+
+                    modifiedFeatures.forEach(modFeature => {
+                        if (modFeature.geometry.type === 'Polygon' || modFeature.geometry.type === 'MultiPolygon') {
+                            // Find other polygons
+                            const others = features.filter(f =>
+                                f.id !== modFeature.id &&
+                                (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
+                            );
+
+                            if (others.length > 0) {
+                                // Union others to create a mask? Or iterate subtract?
+                                // Iterative subtract is safer but slower?
+                                // Let's try to difference against each overlapping one.
+
+                                let currentGeometry = modFeature;
+                                let clipped = false;
+
+                                // Optimization: Filter strictly overlapping?
+                                // Turf difference is fast enough for few polygons.
+
+                                for (const other of others) {
+                                    try {
+                                        const diff = turf.difference(currentGeometry, other);
+                                        if (diff) {
+                                            currentGeometry = diff;
+                                            clipped = true;
+                                        } else {
+                                            // Fully erased?
+                                            currentGeometry = null;
+                                            clipped = true;
+                                            break;
+                                        }
+                                    } catch (err) {
+                                        console.warn("Clipping error", err);
+                                    }
+                                }
+
+                                if (clipped) {
+                                    if (currentGeometry) {
+                                        // Update the feature in draw
+                                        // We must preserve ID and properties
+                                        currentGeometry.id = modFeature.id;
+                                        currentGeometry.properties = modFeature.properties;
+                                        drawControl.add(currentGeometry);
+
+                                        // Update internal var for 'lastFeature' logic below if needed
+                                        // (Assuming drawControl.getAll() will reflect this in next tick, but for now we proceed)
+                                    } else {
+                                        // Fully erased, remove it
+                                        drawControl.delete(modFeature.id);
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // Refresh data after modification
+                    // data = drawControl.getAll(); // const assignment, can't
+                }
+
+                const updatedData = drawControl.getAll(); // Refresh
 
                 // If in CUT mode
                 if (drawModeRef.current === 'cut' && e.type === 'draw.create') {
@@ -405,12 +473,15 @@ export default function Geoportal() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isCompareMode]);
 
-    // Toggle Snapping
+    // Toggle Snapping & Update Distance
     useEffect(() => {
         if (draw.current) {
             draw.current.options.snap = snappingEnabled;
+            if (draw.current.options.snapOptions) {
+                draw.current.options.snapOptions.snapPx = snapPixelDistance;
+            }
         }
-    }, [snappingEnabled]);
+    }, [snappingEnabled, snapPixelDistance]);
 
     // Toggle Autocomplete / Overlap
     // To implement "Erase Overlap" (Autocomplete), we set overlap: false
@@ -1126,6 +1197,17 @@ export default function Geoportal() {
                                             />
                                             <span>Energy Snapping</span>
                                         </label>
+                                        {snappingEnabled && (
+                                            <div style={{ marginLeft: '24px', marginTop: '4px' }}>
+                                                <small>Dist (px): </small>
+                                                <input
+                                                    type="number"
+                                                    value={snapPixelDistance}
+                                                    onChange={(e) => setSnapPixelDistance(Number(e.target.value))}
+                                                    style={{ width: '50px', marginLeft: '5px' }}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                     <div className={styles.checkboxContainer} style={{ marginTop: '5px' }}>
                                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
