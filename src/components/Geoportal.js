@@ -115,6 +115,14 @@ export default function Geoportal() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isCompareMode]);
 
+    // Reset Compare Mode if images < 2
+    useEffect(() => {
+        if (isCompareMode && images.length < 2) {
+            setIsCompareMode(false);
+        }
+    }, [images, isCompareMode]);
+
+
     // Handle Markers separately to avoid re-initializing map
     useEffect(() => {
         if (!geometry) return;
@@ -301,16 +309,18 @@ export default function Geoportal() {
                         <div className={styles.subtitle}>Configure filters below</div>
 
                         <div className={styles.section}>
-                            {/* Compare Mode Toggle */}
-                            <div
-                                className={`${styles.compareToggle} ${isCompareMode ? styles.toggleActive : ''}`}
-                                onClick={() => setIsCompareMode(!isCompareMode)}
-                            >
-                                <span>Compare Mode (Swipe)</span>
-                                <div className={styles.toggleSwitch}>
-                                    <div className={styles.toggleKnob}></div>
+                            {/* Compare Mode Toggle - Only consistent if we have images */}
+                            {images.length >= 2 && (
+                                <div
+                                    className={`${styles.compareToggle} ${isCompareMode ? styles.toggleActive : ''}`}
+                                    onClick={() => setIsCompareMode(!isCompareMode)}
+                                >
+                                    <span>Compare Mode (Swipe)</span>
+                                    <div className={styles.toggleSwitch}>
+                                        <div className={styles.toggleKnob}></div>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
                             <div className={styles.instruction}>
                                 {geometry ? "✅ Location selected" : "Click map to select location"}
