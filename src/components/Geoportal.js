@@ -41,6 +41,16 @@ export default function Geoportal() {
     const [startDate, setStartDate] = useState(thirtyDaysAgo.toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
 
+    // Window width for responsive timeline
+    const [windowWidth, setWindowWidth] = useState(1000); // Default
+
+    useEffect(() => {
+        setWindowWidth(window.innerWidth);
+        const handleResize = () => setWindowWidth(window.innerWidth);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     const [drawMode, setDrawMode] = useState('simple'); // simple, cut
 
     const [cloudCover, setCloudCover] = useState(60);
@@ -655,23 +665,33 @@ export default function Geoportal() {
     const groupedImages = useMemo(() => {
         if (!images || images.length === 0) return [];
 
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const diffTime = Math.abs(end - start);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        // Density Calculation
+        // Available width approx 75% of screen
+        const availableWidth = windowWidth * 0.75;
+        const itemWidth = 60; // Approximate width of a timeline item (dot + margin)
+        const maxItems = Math.floor(availableWidth / itemWidth);
 
-        // Define Mode based on Duration
-        // < 3 Months (Approx 90 days) -> Day
-        // 3 - 12 Months (Approx 90 - 365 days) -> Month
-        // 1 - 5 Years (Approx 365 - 1825 days) -> Year
-        // > 5 Years -> Lustrum (5 years)
+        // Counts
+        const totalImages = images.length;
 
+        // Calculate distinct months and years to check counts
+        const uniqueMonths = new Set(images.map(img => img.date.substring(0, 7))).size;
+        const uniqueYears = new Set(images.map(img => img.date.substring(0, 4))).size;
+
+        // Determine Mode
         let mode = 'day';
-        if (diffDays > 1825) mode = 'lustrum';
-        else if (diffDays > 365) mode = 'year';
-        else if (diffDays > 90) mode = 'month';
 
-        console.log(`Timeline Mode: ${mode} (Duration: ${diffDays} days)`);
+        if (totalImages <= maxItems) {
+            mode = 'day';
+        } else if (uniqueMonths <= maxItems) {
+            mode = 'month';
+        } else if (uniqueYears <= maxItems) {
+            mode = 'year';
+        } else {
+            mode = 'lustrum';
+        }
+
+        console.log(`Timeline Density: Width ${windowWidth}px -> Max Items ${maxItems}. Counts: Img ${totalImages}, Mo ${uniqueMonths}, Yr ${uniqueYears} -> Mode: ${mode}`);
 
         if (mode === 'day') return images;
 
@@ -718,7 +738,7 @@ export default function Geoportal() {
             isGroup: true
         })).sort((a, b) => a.date.localeCompare(b.date)); // Ensure sorted
 
-    }, [images, startDate, endDate]);
+    }, [images, windowWidth]); // Re-run when images change or window resizes
 
 
     // Auto-Update Effects
