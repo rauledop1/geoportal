@@ -10,7 +10,7 @@ export default function Home() {
   const map = useRef(null);
   const marker = useRef(null);
 
-  // State
+  // State for Sentinel-2
   const [startDate, setStartDate] = useState("2023-05-01");
   const [endDate, setEndDate] = useState("2023-07-31");
   const [cloudCover, setCloudCover] = useState(60);
@@ -19,6 +19,9 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeLayerId, setActiveLayerId] = useState(null);
+
+  // State for Location Search
+  const [locationQuery, setLocationQuery] = useState("");
 
   // Initialize Map
   useEffect(() => {
@@ -31,7 +34,7 @@ export default function Home() {
       zoom: 8,
     });
 
-    map.current.addControl(new NavigationControl());
+    map.current.addControl(new NavigationControl(), 'bottom-right');
 
     map.current.on('click', (e) => {
       const { lng, lat } = e.lngLat;
@@ -54,9 +57,32 @@ export default function Home() {
 
   }, []);
 
+  const handleLocationSearch = async (e) => {
+    e.preventDefault();
+    if (!locationQuery.trim()) return;
+
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationQuery)}`);
+      const data = await res.json();
+
+      if (data && data.length > 0) {
+        const { lat, lon } = data[0];
+        map.current.flyTo({
+          center: [lon, lat],
+          zoom: 12
+        });
+      } else {
+        alert("Location not found");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error searching location");
+    }
+  };
+
   const handleSearch = async () => {
     if (!geometry) {
-      setError("Please select a location on the map first.");
+      setError("Please select a location on the map first (click on map).");
       return;
     }
     setError(null);
@@ -137,77 +163,102 @@ export default function Home() {
 
   return (
     <div className={styles.main}>
-      {/* Sidebar */}
-      <div className={styles.sidebar}>
-        <h1 className={styles.title}>Sentinel-2 Browser</h1>
+      {/* Navbar */}
+      <nav className={styles.navbar}>
+        <div className={styles.brand}>GEE Sentinel Browser</div>
+        <form className={styles.searchContainer} onSubmit={handleLocationSearch}>
+          <input
+            type="text"
+            className={styles.searchBar}
+            placeholder="Search location (e.g. Santiago, Chile)..."
+            value={locationQuery}
+            onChange={(e) => setLocationQuery(e.target.value)}
+          />
+          <span className={styles.searchIcon} onClick={handleLocationSearch}>🔍</span>
+        </form>
+        <div style={{ width: '20px' }}></div> {/* Spacer */}
+      </nav>
 
-        <div className={styles.section}>
-          <div className={styles.instruction}>
-            1. Click on map to select region<br />
-            2. Configure filters<br />
-            3. Search and Select Image
+      {/* Map Content */}
+      <div className={styles.mapWrapper}>
+        <div className={styles.sidebar}>
+          <div className={styles.sidebarContent}>
+            <div className={styles.title}>Data Filters</div>
+            <div className={styles.subtitle}>Sentinel-2 Imagery</div>
+
+            <div className={styles.section}>
+              <div className={styles.instruction}>
+                {geometry ? "✅ Location selected" : "Click map to select location"}
+              </div>
+
+              <div style={{ marginTop: '10px' }}>
+                <label className={styles.label}>Date Range</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input
+                    type="date"
+                    className={styles.input}
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                  <input
+                    type="date"
+                    className={styles.input}
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <label className={styles.label}>Max Clouds: {cloudCover}%</label>
+              <input
+                type="range"
+                min="0" max="100"
+                className={styles.range}
+                value={cloudCover}
+                onChange={(e) => setCloudCover(Number(e.target.value))}
+              />
+            </div>
+
+            {error && <div className={styles.error}>{error}</div>}
+
+            <button
+              className={styles.button}
+              onClick={handleSearch}
+              disabled={loading}
+            >
+              {loading ? "Searching..." : "Find Images"}
+            </button>
+
+            <div className={styles.imageList}>
+              {images.map((img) => (
+                <div key={img.id} className={styles.imageCard}>
+                  <div className={styles.cardHeader}>
+                    <span className={styles.cardDate}>
+                      {img.id === activeLayerId && <span className={styles.activeImageMarker}></span>}
+                      {img.date}
+                    </span>
+                    <span className={styles.cardCloud}>{Math.round(img.cloud)}%</span>
+                  </div>
+                  <button
+                    className={styles.buttonSecondary}
+                    onClick={() => handleLayerAdd(img.id)}
+                    style={{ width: '100%' }}
+                  >
+                    {img.id === activeLayerId ? "Active Layer" : "Visualize"}
+                  </button>
+                </div>
+              ))}
+              {images.length === 0 && !loading && (
+                <p style={{ color: '#888', textAlign: 'center', fontSize: '0.85rem' }}>
+                  No results yet. Try searching.
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className={styles.section}>
-          <label className={styles.label}>Start Date</label>
-          <input
-            type="date"
-            className={styles.input}
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-          />
-
-          <label className={styles.label}>End Date</label>
-          <input
-            type="date"
-            className={styles.input}
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-          />
-
-          <label className={styles.label}>Max Cloud Cover: {cloudCover}%</label>
-          <input
-            type="range"
-            min="0" max="100"
-            className={styles.range}
-            value={cloudCover}
-            onChange={(e) => setCloudCover(Number(e.target.value))}
-          />
-        </div>
-
-        {error && <div className={styles.error}>{error}</div>}
-
-        <button
-          className={styles.button}
-          onClick={handleSearch}
-          disabled={loading}
-        >
-          {loading ? "Processing..." : "Search Images"}
-        </button>
-
-        <div className={styles.imageList}>
-          {images.map((img) => (
-            <div key={img.id} className={styles.imageCard}>
-              <div className={styles.cardHeader}>
-                <span className={styles.cardDate}>{img.date}</span>
-                <span className={styles.cardCloud}>{Math.round(img.cloud)}% clouds</span>
-              </div>
-              <button
-                className={img.id === activeLayerId ? styles.buttonSecondary : styles.button}
-                onClick={() => handleLayerAdd(img.id)}
-                style={{ fontSize: '0.8rem', padding: '5px' }}
-              >
-                {img.id === activeLayerId ? "Active Layer" : "Show on Map"}
-              </button>
-            </div>
-          ))}
-          {images.length === 0 && !loading && <p style={{ color: '#888', textAlign: 'center' }}>No images found</p>}
-        </div>
+        <div ref={mapContainer} className={styles.mapContainer} />
       </div>
-
-      {/* Map */}
-      <div ref={mapContainer} className={styles.mapContainer} />
     </div>
   );
 }
