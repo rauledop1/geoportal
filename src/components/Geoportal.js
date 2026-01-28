@@ -827,7 +827,7 @@ export default function Geoportal() {
         setDrawMode('cut');
         if (draw.current) {
             // Start drawing the cutter
-            draw.current.changeMode('draw_polygon');
+            draw.current.changeMode('draw_line_string');
         }
     };
 
