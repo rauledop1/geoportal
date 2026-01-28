@@ -10,14 +10,18 @@
   },
   "dependencies": {
     "@google/earthengine": "^0.1.393",
+    "@mapbox/mapbox-gl-draw": "^1.5.1",
     "@maplibre/maplibre-gl-compare": "^0.5.0",
+    "@tmcw/togeojson": "^7.1.2",
     "@turf/turf": "^6.5.0",
+    "jszip": "^3.10.1",
     "maplibre-gl": "^4.1.0",
     "next": "14.1.3",
     "node-self": "^1.0.2",
     "pg": "^8.17.2",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "shpjs": "^6.2.0"
   },
   "devDependencies": {
     "@types/mapbox__mapbox-gl-draw": "^1.4.9",
