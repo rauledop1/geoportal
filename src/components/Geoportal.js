@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Map, Marker, NavigationControl } from "maplibre-gl";
+import React, { useState, useRef, useEffect, useMemo } from "react";
+import maplibregl, { Map, NavigationControl, Marker } from "maplibre-gl";
 import Compare from "@maplibre/maplibre-gl-compare";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@maplibre/maplibre-gl-compare/dist/maplibre-gl-compare.css";
@@ -14,7 +14,7 @@ import JSZip from "jszip";
 import { kml } from "@tmcw/togeojson";
 import bbox from "@turf/bbox";
 import difference from "@turf/difference";
-import { useMemo } from "react";
+import buffer from "@turf/buffer";
 
 export default function Geoportal() {
     const mapContainer = useRef(null);
@@ -234,26 +234,38 @@ export default function Geoportal() {
 
                 // If in CUT mode
                 if (drawMode === 'cut' && e.type === 'draw.create') {
-                    // The last feature drawn is the cutter
-                    // The existing feature is what we want to cut
                     const all = data.features;
-                    if (all.length >= 2) {
-                        const cutter = all[all.length - 1]; // Latest
-                        const target = all[all.length - 2]; // Previous (we assume 1 target for now or just merge all others?)
-                        // Let's assume strict 1 Cutter 1 Target scenario for simplicity or cut from "current geometry"
+                    // We expect a LineString as the cutter
+                    // The last feature drawn is the cutter
+                    const cutter = all[all.length - 1];
 
-                        // We should use the 'geometry' state as the source of truth for the target?
-                        // But 'draw' has everything.
-                        // Let's take the cutter, remove it from draw, subtract it from the previous geom.
+                    // We expect 'geometry' state to hold the target polygon.
+                    // IMPORTANT: The target is NOT in 'draw' if we cleared it?
+                    // Wait, in previous step we add it to draw?
+                    // If we are in 'cut' mode, we might just have the cutter in draw if we cleared before.
+                    // But usually we want to see what we cut.
+                    // Let's assume 'geometry' state holds the Polygon to be cut.
 
+                    if (cutter && geometry && cutter.geometry.type === 'LineString') {
                         try {
-                            const diff = difference(target, cutter);
+                            // Buffer the line to make it a polygon (e.g., 0.5m width = 0.0005km?)
+                            // turf/buffer uses kilometers by default? or generic units?
+                            // Default is kilometers. 1 meter = 0.001 km.
+                            const cutterPoly = buffer(cutter, 0.0005, { units: 'kilometers' }); // 0.5 meter buffer
+
+                            // Convert geometry state to Feature
+                            const targetFeature = { type: 'Feature', geometry: geometry, properties: {} };
+
+                            const diff = difference(targetFeature, cutterPoly);
+
                             if (diff) {
                                 drawControl.deleteAll();
+                                // Add result back to draw to show it?
+                                // If we don't add it, the user sees nothing until next interaction?
+                                // Better to add it.
                                 drawControl.add(diff);
                                 setGeometry(diff.geometry);
                             } else {
-                                // Cut failed or eliminated everything
                                 alert("Cut resulted in empty geometry");
                             }
                         } catch (err) {
@@ -261,9 +273,8 @@ export default function Geoportal() {
                             alert("Cut failed");
                         }
 
-                        // Reset mode
                         setDrawMode('simple');
-                        return; // Done
+                        return;
                     }
                 }
 
@@ -913,7 +924,7 @@ export default function Geoportal() {
                                     </div>
                                     <div className={`${styles.toolBtn} ${drawMode === 'cut' ? styles.toolBtnActive : ''}`} onClick={handleCutPolygon}>
                                         <span className={styles.toolIcon}>✂️</span>
-                                        <span>Cut Polygon (Draw Cutter)</span>
+                                        <span>Cut Polygon (Draw Line)</span>
                                     </div>
                                     <div className={styles.toolBtn} onClick={handleFinishDraw}>
                                         <span className={styles.toolIcon}>✅</span>
