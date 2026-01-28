@@ -10,18 +10,21 @@ export default function Home() {
   const map = useRef(null);
   const marker = useRef(null);
 
-  // State for Sentinel-2
+  // UI State
+  const [isExplorerOpen, setIsExplorerOpen] = useState(false);
+
+  // Sentinel-2 State
   const [startDate, setStartDate] = useState("2023-05-01");
   const [endDate, setEndDate] = useState("2023-07-31");
   const [cloudCover, setCloudCover] = useState(60);
   const [sensor, setSensor] = useState("Sentinel-2");
-  const [geometry, setGeometry] = useState(null); // GeoJSON point
+  const [geometry, setGeometry] = useState(null);
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeLayerId, setActiveLayerId] = useState(null);
 
-  // State for Location Search
+  // Location Search State
   const [locationQuery, setLocationQuery] = useState("");
 
   // Initialize Map
@@ -31,7 +34,7 @@ export default function Home() {
     map.current = new Map({
       container: mapContainer.current,
       style: "https://demotiles.maplibre.org/style.json",
-      center: [-71.5, -33.5], // Default center (Chile roughly)
+      center: [-71.5, -33.5],
       zoom: 8,
     });
 
@@ -39,14 +42,9 @@ export default function Home() {
 
     map.current.on('click', (e) => {
       const { lng, lat } = e.lngLat;
-      const point = {
-        type: "Point",
-        coordinates: [lng, lat]
-      };
-
+      const point = { type: "Point", coordinates: [lng, lat] };
       setGeometry(point);
 
-      // Update marker
       if (marker.current) {
         marker.current.setLngLat([lng, lat]);
       } else {
@@ -54,6 +52,9 @@ export default function Home() {
           .setLngLat([lng, lat])
           .addTo(map.current);
       }
+
+      // Auto-open explorer if location is set
+      setIsExplorerOpen(true);
     });
 
   }, []);
@@ -68,10 +69,7 @@ export default function Home() {
 
       if (data && data.length > 0) {
         const { lat, lon } = data[0];
-        map.current.flyTo({
-          center: [lon, lat],
-          zoom: 12
-        });
+        map.current.flyTo({ center: [lon, lat], zoom: 12 });
       } else {
         alert("Location not found");
       }
@@ -107,6 +105,10 @@ export default function Home() {
       if (!res.ok) throw new Error("Search failed");
       const data = await res.json();
       setImages(data.images || []);
+
+      // Close explorer slightly or keep open? 
+      // User might want to adjust filters. 
+      // Maybe specific interactions close it.
     } catch (e) {
       setError(e.message);
     } finally {
@@ -133,13 +135,8 @@ export default function Home() {
       const layerId = "ee-layer";
       const sourceId = "ee-source";
 
-      // Remove existing layer if any
-      if (map.current.getLayer(layerId)) {
-        map.current.removeLayer(layerId);
-      }
-      if (map.current.getSource(sourceId)) {
-        map.current.removeSource(sourceId);
-      }
+      if (map.current.getLayer(layerId)) map.current.removeLayer(layerId);
+      if (map.current.getSource(sourceId)) map.current.removeSource(sourceId);
 
       map.current.addSource(sourceId, {
         type: "raster",
@@ -159,35 +156,53 @@ export default function Home() {
 
     } catch (e) {
       setError(e.message);
+      alert("Error loading layer: " + e.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper to calculate dot color based on cloud percentage
+  // 0% -> White/Light, 100% -> Dark Grey
+  const getDotColor = (cloudPct) => {
+    // 0 clouds => 255 (white), 100 clouds => 100 (dark grey)
+    const val = Math.floor(255 - (cloudPct * 1.55));
+    return `rgb(${val}, ${val}, ${val})`;
   };
 
   return (
     <div className={styles.main}>
       {/* Navbar */}
       <nav className={styles.navbar}>
-        <div className={styles.brand}>GEE Sentinel Browser</div>
+        <div className={styles.brand}>
+          <span>GEE Explorer</span>
+          <button
+            className={`${styles.explorerBtn} ${isExplorerOpen ? styles.explorerBtnActive : ''}`}
+            onClick={() => setIsExplorerOpen(!isExplorerOpen)}
+          >
+            Explorador {isExplorerOpen ? '▲' : '▼'}
+          </button>
+        </div>
+
         <form className={styles.searchContainer} onSubmit={handleLocationSearch}>
           <input
             type="text"
             className={styles.searchBar}
-            placeholder="Search location (e.g. Santiago, Chile)..."
+            placeholder="Search location..."
             value={locationQuery}
             onChange={(e) => setLocationQuery(e.target.value)}
           />
           <span className={styles.searchIcon} onClick={handleLocationSearch}>🔍</span>
         </form>
-        <div style={{ width: '20px' }}></div> {/* Spacer */}
+        <div style={{ width: '20px' }}></div>
       </nav>
 
-      {/* Map Content */}
       <div className={styles.mapWrapper}>
-        <div className={styles.sidebar}>
+        {/* Floating Sidebar (Explorer) */}
+        <div className={`${styles.sidebar} ${isExplorerOpen ? styles.sidebarVisible : ''}`}>
           <div className={styles.sidebarContent}>
-            <div className={styles.title}>Data Filters</div>
-            <div className={styles.subtitle}>Sentinel-2 Imagery</div>
+            <div className={styles.title}>Refine Search</div>
+            <div className={styles.subtitle}>Configure filters below</div>
 
             <div className={styles.section}>
               <div className={styles.instruction}>
@@ -197,7 +212,7 @@ export default function Home() {
               <div style={{ marginTop: '10px' }}>
                 <label className={styles.label}>Sensor</label>
                 <select
-                  className={styles.input}
+                  className={styles.select}
                   value={sensor}
                   onChange={(e) => setSensor(e.target.value)}
                 >
@@ -207,20 +222,18 @@ export default function Home() {
                 </select>
 
                 <label className={styles.label}>Date Range</label>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <input
-                    type="date"
-                    className={styles.input}
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
-                  <input
-                    type="date"
-                    className={styles.input}
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  />
-                </div>
+                <input
+                  type="date"
+                  className={styles.input}
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+                <input
+                  type="date"
+                  className={styles.input}
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
               </div>
 
               <label className={styles.label}>Max Clouds: {cloudCover}%</label>
@@ -240,43 +253,39 @@ export default function Home() {
               onClick={handleSearch}
               disabled={loading}
             >
-              {loading ? "Searching..." : "Find Images"}
+              {loading ? "Searching..." : "Search Images"}
             </button>
-
-            <div className={styles.imageList}>
-              {images.map((img) => (
-                <div key={img.id} className={styles.imageCard}>
-                  {img.thumbnail && (
-                    <img
-                      src={img.thumbnail}
-                      alt="Thumbnail"
-                      className={styles.thumbnail}
-                    />
-                  )}
-                  <div className={styles.cardHeader}>
-                    <span className={styles.cardDate}>
-                      {img.id === activeLayerId && <span className={styles.activeImageMarker}></span>}
-                      {img.date}
-                    </span>
-                    <span className={styles.cardCloud}>{Math.round(img.cloud)}%</span>
-                  </div>
-                  <button
-                    className={styles.buttonSecondary}
-                    onClick={() => handleLayerAdd(img.id)}
-                    style={{ width: '100%' }}
-                  >
-                    {img.id === activeLayerId ? "Active Layer" : "Visualize"}
-                  </button>
-                </div>
-              ))}
-              {images.length === 0 && !loading && (
-                <p style={{ color: '#888', textAlign: 'center', fontSize: '0.85rem' }}>
-                  No results yet. Try searching.
-                </p>
-              )}
-            </div>
           </div>
         </div>
+
+        {/* Bottom Timeline Results */}
+        {images.length > 0 && (
+          <div className={styles.timelineContainer}>
+            <div className={styles.timelineScroll}>
+              {images.map((img) => (
+                <div key={img.id} className={styles.timelineItem} onClick={() => handleLayerAdd(img.id)}>
+                  <div className={styles.timelinePopover}>
+                    {img.thumbnail && (
+                      <img src={img.thumbnail} alt="Preview" className={styles.thumbnail} />
+                    )}
+                    <div className={styles.popoverInfo}>
+                      <b>{img.date}</b><br />
+                      {Math.round(img.cloud)}% Clouds
+                    </div>
+                    <button className={styles.popoverBtn}>Visualize</button>
+                  </div>
+
+                  <div
+                    className={`${styles.timelineDot} ${img.id === activeLayerId ? styles.timelineDotActive : ''}`}
+                    style={{ backgroundColor: getDotColor(img.cloud) }}
+                  ></div>
+
+                  <div className={styles.timelineDate}>{img.date}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div ref={mapContainer} className={styles.mapContainer} />
       </div>
