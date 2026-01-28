@@ -358,7 +358,12 @@ export default function Geoportal() {
 
                 // Normal update
                 if (data.features.length > 0) {
-                    setGeometry(data.features[0].geometry);
+                    // Set geometry to the last feature added (assumed most relevant for search)
+                    // Or stick to 0? If I draw a second one, it's at end of array?
+                    // MapboxDraw usually appends?
+                    // Let's use the LAST feature as the "active" geometry for search.
+                    const lastFeature = data.features[data.features.length - 1];
+                    setGeometry(lastFeature.geometry);
                 } else {
                     setGeometry(null);
                 }
@@ -892,7 +897,7 @@ export default function Geoportal() {
     const handleDrawPolygon = () => {
         setDrawMode('simple');
         if (draw.current) {
-            draw.current.deleteAll(); // Start fresh or keep? "Draw Polygon" typically starts new.
+            // draw.current.deleteAll(); // Removed to allow multiple polygons
             draw.current.changeMode('draw_polygon');
         }
     };
