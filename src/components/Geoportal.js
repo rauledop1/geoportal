@@ -655,9 +655,23 @@ export default function Geoportal() {
     const groupedImages = useMemo(() => {
         if (!images || images.length === 0) return [];
 
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        // Define Mode based on Duration
+        // < 3 Months (Approx 90 days) -> Day
+        // 3 - 12 Months (Approx 90 - 365 days) -> Month
+        // 1 - 5 Years (Approx 365 - 1825 days) -> Year
+        // > 5 Years -> Lustrum (5 years)
+
         let mode = 'day';
-        if (images.length > 500) mode = 'year';
-        else if (images.length > 50) mode = 'month';
+        if (diffDays > 1825) mode = 'lustrum';
+        else if (diffDays > 365) mode = 'year';
+        else if (diffDays > 90) mode = 'month';
+
+        console.log(`Timeline Mode: ${mode} (Duration: ${diffDays} days)`);
 
         if (mode === 'day') return images;
 
@@ -665,9 +679,24 @@ export default function Geoportal() {
 
         images.forEach(img => {
             const date = new Date(img.date);
+            const year = date.getFullYear();
             let key;
-            if (mode === 'year') key = date.getFullYear().toString();
-            else key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+            if (mode === 'lustrum') {
+                // block of 5 years: 2020-2024, 2025-2029
+                const lustrumStart = Math.floor(year / 5) * 5;
+                const lustrumEnd = lustrumStart + 4;
+                key = `${lustrumStart}-${lustrumEnd}`;
+            }
+            else if (mode === 'year') {
+                key = year.toString();
+            }
+            else if (mode === 'month') {
+                key = `${year}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            }
+            else {
+                key = img.id; // Fallback
+            }
 
             if (!groups[key]) {
                 groups[key] = {
@@ -689,7 +718,28 @@ export default function Geoportal() {
             isGroup: true
         })).sort((a, b) => a.date.localeCompare(b.date)); // Ensure sorted
 
-    }, [images]);
+    }, [images, startDate, endDate]);
+
+
+    // Auto-Update Effects
+
+    // 1. On Vis Change: Update active layer if exists
+    useEffect(() => {
+        if (!loading && activeLayerId && !isCompareMode) {
+            console.log("Auto-updating layer viz...");
+            handleLayerAdd(activeLayerId, 'single');
+        }
+    }, [visOption]);
+
+    // 2. On Sensor Change: Re-run search if geometry exists
+    useEffect(() => {
+        // Prevent initial run or redundant runs?
+        // If geometry is set and we are not already loading...
+        if (geometry && !loading) {
+            console.log("Auto-updating search for sensor...");
+            handleSearch();
+        }
+    }, [sensor]);
 
 
     // Timeline Interactions
