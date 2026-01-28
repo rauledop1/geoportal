@@ -5,51 +5,60 @@ import { NextResponse } from "next/server";
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { action, startDate, endDate, cloudCover, geometry, imageId } = body;
+    const { action, startDate, endDate, cloudCover, geometry, imageId, sensor } = body;
     const key = process.env.service_account_key;
 
     await authenticate(key);
 
+    // Define sensor configs
+    const SENSORS = {
+      "Sentinel-2": {
+        collection: "COPERNICUS/S2_SR",
+        vis: { bands: ['B8', 'B4', 'B3'], min: 0, max: 3000, gamma: 1.4 },
+        cloudBand: "CLOUDY_PIXEL_PERCENTAGE",
+        idPrefix: "COPERNICUS/S2_SR/"
+      },
+      "Sentinel-2 Harmonized": {
+        collection: "COPERNICUS/S2_SR_HARMONIZED",
+        vis: { bands: ['B8', 'B4', 'B3'], min: 0, max: 3000, gamma: 1.4 },
+        cloudBand: "CLOUDY_PIXEL_PERCENTAGE",
+        idPrefix: "COPERNICUS/S2_SR_HARMONIZED/"
+      },
+      "Landsat 9": {
+        collection: "LANDSAT/LC09/C02/T1_L2",
+        vis: { bands: ['SR_B5', 'SR_B4', 'SR_B3'], min: 0, max: 30000, gamma: 1.4 }, // Landsat values are roughly 0-65535, typical scaling
+        cloudBand: "CLOUD_COVER", // Property name is different for Landsat
+        idPrefix: "LANDSAT/LC09/C02/T1_L2/"
+      }
+    };
+
+    const selectedSensor = SENSORS[sensor] || SENSORS["Sentinel-2"];
+
     if (action === "search") {
-      const col = ee.ImageCollection("COPERNICUS/S2_SR")
+      const col = ee.ImageCollection(selectedSensor.collection)
         .filterDate(startDate, endDate)
         .filterBounds(ee.Geometry(geometry))
-        .filter(ee.Filter.lte("CLOUDY_PIXEL_PERCENTAGE", cloudCover))
-        .sort("CLOUDY_PIXEL_PERCENTAGE");
+        .filter(ee.Filter.lte(selectedSensor.cloudBand, cloudCover))
+        .sort(selectedSensor.cloudBand);
 
-      // Extract necessary metadata
       const imageList = col.limit(50);
 
       const featureCollection = imageList.map((img) => {
         return ee.Feature(null, {
-          // Construct Full ID as 'COPERNICUS/S2_SR/' + system:index
-          id: ee.String("COPERNICUS/S2_SR/").cat(img.get("system:index")),
+          id: ee.String(selectedSensor.idPrefix).cat(img.get("system:index")),
           date: img.date().format("YYYY-MM-dd"),
-          cloud: img.get("CLOUDY_PIXEL_PERCENTAGE"),
+          cloud: img.get(selectedSensor.cloudBand), // Get correct cloud band
         });
       });
 
       const result = await evaluate(featureCollection.toList(50));
       const features = result.map((f) => f.properties);
 
-      // Generate thumbnails for each image
       const featuresWithThumbnails = await Promise.all(features.map(async (feat) => {
-        // Now feat.id should be the full path e.g. COPERNICUS/S2_SR/2023...
         const image = ee.Image(feat.id);
-        const vis = {
-          bands: ['B8', 'B4', 'B3'],
-          min: 0,
-          max: 3000,
-          gamma: 1.4,
-        };
-        try {
-          // Pass geometry as region to focus thumbnail
-          // Must be a GeoJSON object or ee.Geometry, but getThumbURL expects JSON/coords if client-side or specific format
-          // Since we are server-side with Node, passing the 'geometry' object (GeoJSON) directly to region might need ee.Geometry(geometry) serialization?
-          // getThumbURL options: region must be GeoJSON or WKT or ... 
-          // Actually it often accepts a pure GeoJSON object.
 
-          const thumbnail = await getThumbUrl(image, vis, geometry);
+        try {
+          const thumbnail = await getThumbUrl(image, selectedSensor.vis, geometry);
           return { ...feat, thumbnail };
         } catch (e) {
           console.error(`Failed to get thumb for ${feat.id}`, e);
@@ -61,16 +70,12 @@ export async function POST(req) {
     }
 
     if (action === "getMap") {
-      // imageId coming from frontend should now be full path
       const image = ee.Image(imageId);
-      const vis = {
-        bands: ['B8', 'B4', 'B3'],
-        min: 0,
-        max: 3000,
-        gamma: 1.4,
-      };
+      // For getMap, we might need to know the sensor again to apply right VIS, or infer/force pass it.
+      // But actually, we can try to guess or better yet, pass 'sensor' in getMap action too.
+      // Assuming frontend passes 'sensor' state in this call too.
 
-      const { urlFormat } = await getMapId(image, vis);
+      const { urlFormat } = await getMapId(image, selectedSensor.vis);
       return NextResponse.json({ urlFormat }, { status: 200 });
     }
 
@@ -82,7 +87,7 @@ export async function POST(req) {
   }
 }
 
-// Helper functions
+// Helper functions (unchanged)
 function authenticate(key) {
   return new Promise((resolve, reject) => {
     ee.data.authenticateViaPrivateKey(

@@ -14,6 +14,7 @@ export default function Home() {
   const [startDate, setStartDate] = useState("2023-05-01");
   const [endDate, setEndDate] = useState("2023-07-31");
   const [cloudCover, setCloudCover] = useState(60);
+  const [sensor, setSensor] = useState("Sentinel-2");
   const [geometry, setGeometry] = useState(null); // GeoJSON point
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -98,6 +99,7 @@ export default function Home() {
           startDate,
           endDate,
           cloudCover,
+          sensor,
           geometry
         })
       });
@@ -120,7 +122,8 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "getMap",
-          imageId
+          imageId,
+          sensor
         })
       });
 
@@ -192,6 +195,17 @@ export default function Home() {
               </div>
 
               <div style={{ marginTop: '10px' }}>
+                <label className={styles.label}>Sensor</label>
+                <select
+                  className={styles.input}
+                  value={sensor}
+                  onChange={(e) => setSensor(e.target.value)}
+                >
+                  <option value="Sentinel-2">Sentinel-2 Level-2A</option>
+                  <option value="Sentinel-2 Harmonized">Sentinel-2 Harmonized</option>
+                  <option value="Landsat 9">Landsat 9 Level-2</option>
+                </select>
+
                 <label className={styles.label}>Date Range</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <input
@@ -235,7 +249,7 @@ export default function Home() {
                   {img.thumbnail && (
                     <img
                       src={img.thumbnail}
-                      alt="Sentinel-2 Thumbnail"
+                      alt="Thumbnail"
                       className={styles.thumbnail}
                     />
                   )}
