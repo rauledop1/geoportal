@@ -1,6 +1,7 @@
 import "node-self";
 import ee from "@google/earthengine";
 import { NextResponse } from "next/server";
+import { getSensorConfig } from "./sensors";
 
 export async function POST(req) {
   try {
@@ -10,29 +11,7 @@ export async function POST(req) {
 
     await authenticate(key);
 
-    // Define sensor configs and band mappings
-    const SENSORS = {
-      "Sentinel-2": {
-        collection: "COPERNICUS/S2_SR",
-        bands: { RED: 'B4', GREEN: 'B3', BLUE: 'B2', NIR: 'B8', SWIR1: 'B11' },
-        cloudBand: "CLOUDY_PIXEL_PERCENTAGE",
-        idPrefix: "COPERNICUS/S2_SR/"
-      },
-      "Sentinel-2 Harmonized": {
-        collection: "COPERNICUS/S2_SR_HARMONIZED",
-        bands: { RED: 'B4', GREEN: 'B3', BLUE: 'B2', NIR: 'B8', SWIR1: 'B11' },
-        cloudBand: "CLOUDY_PIXEL_PERCENTAGE",
-        idPrefix: "COPERNICUS/S2_SR_HARMONIZED/"
-      },
-      "Landsat 9": {
-        collection: "LANDSAT/LC09/C02/T1_L2",
-        bands: { RED: 'SR_B4', GREEN: 'SR_B3', BLUE: 'SR_B2', NIR: 'SR_B5', SWIR1: 'SR_B6' },
-        cloudBand: "CLOUD_COVER",
-        idPrefix: "LANDSAT/LC09/C02/T1_L2/"
-      }
-    };
-
-    const selectedSensor = SENSORS[sensor] || SENSORS["Sentinel-2"];
+    const selectedSensor = getSensorConfig(sensor);
     const bands = selectedSensor.bands;
 
     // Define Visualization Parameters based on option
@@ -57,7 +36,7 @@ export async function POST(req) {
         .filterDate(startDate, endDate)
         .filterBounds(ee.Geometry(geometry))
         .filter(ee.Filter.lte(selectedSensor.cloudBand, cloudCover))
-        .sort(selectedSensor.cloudBand);
+        .sort("system:time_start"); // Sorted Oldest to Newest
 
       const imageList = col.limit(50);
 
