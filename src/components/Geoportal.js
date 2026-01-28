@@ -966,6 +966,8 @@ export default function Geoportal() {
     }, [visOption]);
 
     // 2. On Sensor Change Or Geometry Change: Re-run search if geometry exists
+    // DISABLED: User wants manual search only.
+    /*
     useEffect(() => {
         // Prevent initial run or redundant runs?
         // If geometry is set and we are not already loading...
@@ -976,6 +978,7 @@ export default function Geoportal() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sensor, geometry]);
+    */
 
 
     // Timeline Interactions
