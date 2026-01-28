@@ -29,6 +29,7 @@ export default function Geoportal() {
     // UI State
     const [isExplorerOpen, setIsExplorerOpen] = useState(false);
     const [isCompareMode, setIsCompareMode] = useState(false);
+    const [activeTab, setActiveTab] = useState('search'); // search, upload, draw
 
     // Sentinel-2 State
     const today = new Date();
@@ -505,6 +506,23 @@ export default function Geoportal() {
         }
     };
 
+    {/* Draw Mode Handlers */ }
+    const handleDrawPolygon = () => {
+        if (draw.current) {
+            draw.current.changeMode('draw_polygon');
+        }
+    };
+
+    const handleDeleteSelected = () => {
+        if (draw.current) {
+            draw.current.trash();
+            // Manually trigger update since trash doesn't always fire update immediately if we rely on it
+            const data = draw.current.getAll();
+            if (data.features.length === 0) setGeometry(null);
+            else setGeometry(data.features[0].geometry);
+        }
+    };
+
     return (
         <div className={styles.main}>
             {/* Navbar */}
@@ -536,98 +554,166 @@ export default function Geoportal() {
                 {/* Floating Sidebar (Explorer) */}
                 <div className={`${styles.sidebar} ${isExplorerOpen ? styles.sidebarVisible : ''}`}>
                     <div className={styles.sidebarContent}>
-                        <div className={styles.title}>Refine Search</div>
-                        <div className={styles.subtitle}>Configure filters below</div>
-
-                        <div className={styles.section}>
-                            {/* Compare Mode Toggle - Only consistent if we have images */}
-                            {images.length >= 2 && (
-                                <div
-                                    className={`${styles.compareToggle} ${isCompareMode ? styles.toggleActive : ''}`}
-                                    onClick={() => setIsCompareMode(!isCompareMode)}
-                                >
-                                    <span>Compare Mode (Swipe)</span>
-                                    <div className={styles.toggleSwitch}>
-                                        <div className={styles.toggleKnob}></div>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className={styles.section}>
-                                <label className={styles.label}>Upload Geometry</label>
-                                <input
-                                    type="file"
-                                    accept=".geojson,.json,.kml,.kmz,.zip"
-                                    onChange={handleFileUpload}
-                                    className={styles.input}
-                                />
-                                <small style={{ color: '#777', fontSize: '0.75rem' }}>
-                                    Supports: GeoJSON, KML, KMZ, Shapefile (zip)
-                                </small>
-                            </div>
-
-                            <div className={styles.instruction}>
-                                {geometry ? "✅ Location selected" : "Click map to select location"}
-                            </div>
-
-                            <div style={{ marginTop: '10px' }}>
-                                <label className={styles.label}>Sensor</label>
-                                <select
-                                    className={styles.select}
-                                    value={sensor}
-                                    onChange={(e) => setSensor(e.target.value)}
-                                >
-                                    <option value="Sentinel-2">Sentinel-2 Level-2A</option>
-                                    <option value="Sentinel-2 Harmonized">Sentinel-2 Harmonized</option>
-                                    <option value="Landsat 9">Landsat 9 Level-2</option>
-                                </select>
-
-                                <label className={styles.label}>Visualization</label>
-                                <select
-                                    className={styles.select}
-                                    value={visOption}
-                                    onChange={(e) => setVisOption(e.target.value)}
-                                >
-                                    <option value="True Color (RGB)">True Color (RGB)</option>
-                                    <option value="False Color (Infrared)">False Color (Infrared)</option>
-                                    <option value="NDVI">NDVI (Vegetation)</option>
-                                    <option value="NDWI">NDWI (Water)</option>
-                                </select>
-
-                                <label className={styles.label}>Date Range</label>
-                                <input
-                                    type="date"
-                                    className={styles.input}
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                />
-                                <input
-                                    type="date"
-                                    className={styles.input}
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                />
-                            </div>
-
-                            <label className={styles.label}>Max Clouds: {cloudCover}%</label>
-                            <input
-                                type="range"
-                                min="0" max="100"
-                                className={styles.range}
-                                value={cloudCover}
-                                onChange={(e) => setCloudCover(Number(e.target.value))}
-                            />
+                        {/* Tabs */}
+                        <div className={styles.tabNav}>
+                            <button
+                                className={`${styles.tabBtn} ${activeTab === 'search' ? styles.tabBtnActive : ''}`}
+                                onClick={() => setActiveTab('search')}
+                            >
+                                Search
+                            </button>
+                            <button
+                                className={`${styles.tabBtn} ${activeTab === 'upload' ? styles.tabBtnActive : ''}`}
+                                onClick={() => setActiveTab('upload')}
+                            >
+                                Upload
+                            </button>
+                            <button
+                                className={`${styles.tabBtn} ${activeTab === 'draw' ? styles.tabBtnActive : ''}`}
+                                onClick={() => setActiveTab('draw')}
+                            >
+                                Draw
+                            </button>
                         </div>
 
-                        {error && <div className={styles.error}>{error}</div>}
+                        {/* SEARCH TAB */}
+                        {activeTab === 'search' && (
+                            <>
+                                <div className={styles.title}>Refine Search</div>
+                                <div className={styles.subtitle}>Configure filters below</div>
 
-                        <button
-                            className={styles.button}
-                            onClick={handleSearch}
-                            disabled={loading}
-                        >
-                            {loading ? "Searching..." : "Search Images"}
-                        </button>
+                                <div className={styles.section}>
+                                    {/* Compare Mode Toggle */}
+                                    {images.length >= 2 && (
+                                        <div
+                                            className={`${styles.compareToggle} ${isCompareMode ? styles.toggleActive : ''}`}
+                                            onClick={() => setIsCompareMode(!isCompareMode)}
+                                        >
+                                            <span>Compare Mode (Swipe)</span>
+                                            <div className={styles.toggleSwitch}>
+                                                <div className={styles.toggleKnob}></div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className={styles.instruction}>
+                                        {geometry ? "✅ Location selected" : "Click map or upload/draw geometry"}
+                                    </div>
+
+                                    <div style={{ marginTop: '10px' }}>
+                                        <label className={styles.label}>Sensor</label>
+                                        <select
+                                            className={styles.select}
+                                            value={sensor}
+                                            onChange={(e) => setSensor(e.target.value)}
+                                        >
+                                            <option value="Sentinel-2">Sentinel-2 Level-2A</option>
+                                            <option value="Sentinel-2 Harmonized">Sentinel-2 Harmonized</option>
+                                            <option value="Landsat 9">Landsat 9 Level-2</option>
+                                        </select>
+
+                                        <label className={styles.label}>Visualization</label>
+                                        <select
+                                            className={styles.select}
+                                            value={visOption}
+                                            onChange={(e) => setVisOption(e.target.value)}
+                                        >
+                                            <option value="True Color (RGB)">True Color (RGB)</option>
+                                            <option value="False Color (Infrared)">False Color (Infrared)</option>
+                                            <option value="NDVI">NDVI (Vegetation)</option>
+                                            <option value="NDWI">NDWI (Water)</option>
+                                        </select>
+
+                                        <label className={styles.label}>Date Range</label>
+                                        <input
+                                            type="date"
+                                            className={styles.input}
+                                            value={startDate}
+                                            onChange={(e) => setStartDate(e.target.value)}
+                                        />
+                                        <input
+                                            type="date"
+                                            className={styles.input}
+                                            value={endDate}
+                                            onChange={(e) => setEndDate(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <label className={styles.label}>Max Clouds: {cloudCover}%</label>
+                                    <input
+                                        type="range"
+                                        min="0" max="100"
+                                        className={styles.range}
+                                        value={cloudCover}
+                                        onChange={(e) => setCloudCover(Number(e.target.value))}
+                                    />
+                                </div>
+
+                                {error && <div className={styles.error}>{error}</div>}
+
+                                <button
+                                    className={styles.button}
+                                    onClick={handleSearch}
+                                    disabled={loading}
+                                >
+                                    {loading ? "Searching..." : "Search Images"}
+                                </button>
+                            </>
+                        )}
+
+                        {/* UPLOAD TAB */}
+                        {activeTab === 'upload' && (
+                            <>
+                                <div className={styles.title}>Upload Geometry</div>
+                                <div className={styles.subtitle}>Drag & drop or click to upload</div>
+
+                                <div className={styles.section}>
+                                    <div className={styles.dropZone}>
+                                        <span>📂 Click or Drag File Here</span>
+                                        <br />
+                                        <small>(GeoJSON, KML, KMZ, Shapefile .zip)</small>
+                                        <input
+                                            type="file"
+                                            accept=".geojson,.json,.kml,.kmz,.zip"
+                                            onChange={handleFileUpload}
+                                        />
+                                    </div>
+
+                                    <div className={styles.instruction}>
+                                        {geometry ? "✅ Geometry loaded" : "No geometry loaded"}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {/* DRAW TAB */}
+                        {activeTab === 'draw' && (
+                            <>
+                                <div className={styles.title}>Draw Geometry</div>
+                                <div className={styles.subtitle}>Use tools to create polygons</div>
+
+                                <div className={styles.section}>
+                                    <div className={styles.toolBtn} onClick={handleDrawPolygon}>
+                                        <span className={styles.toolIcon}>⬠</span>
+                                        <span>Draw Polygon</span>
+                                    </div>
+                                    <div className={styles.toolBtn} onClick={handleDeleteSelected}>
+                                        <span className={styles.toolIcon}>🗑️</span>
+                                        <span>Delete Selected</span>
+                                    </div>
+
+                                    <div className={styles.instruction}>
+                                        <small>
+                                            • Click &quot;Draw Polygon&quot; to start.<br />
+                                            • Click points on map.<br />
+                                            • Double click to finish.<br />
+                                            • Click a polygon to select it for editing or deletion.
+                                        </small>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
                     </div>
                 </div>
 
