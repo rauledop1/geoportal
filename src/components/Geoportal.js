@@ -98,6 +98,9 @@ export default function Geoportal() {
         const initialZoom = 8;
 
         if (isCompareMode) {
+            // Check if containers are ready
+            if (!leftMapContainer.current || !rightMapContainer.current) return;
+
             // Initialize Two Maps
             mapLeft.current = new Map({
                 container: leftMapContainer.current,
@@ -116,7 +119,20 @@ export default function Geoportal() {
             });
 
             // Sync interactions via Compare
-            compare.current = new Compare(mapLeft.current, mapRight.current, mapContainer.current, {});
+            try {
+                // Ensure mapContainer matches the wrapper for both
+                compare.current = new Compare(mapLeft.current, mapRight.current, mapContainer.current, {});
+            } catch (err) {
+                console.error("Error initializing Compare:", err);
+            }
+
+            // Restore Active Layer to Left Map if exists
+            mapLeft.current.once('load', () => {
+                if (activeLayerId) {
+                    console.log("Restoring active layer to Left Map:", activeLayerId);
+                    handleLayerAdd(activeLayerId, 'left');
+                }
+            });
 
             // Add click listener to Left Map (primary for interaction)
             mapLeft.current.on('click', (e) => {
