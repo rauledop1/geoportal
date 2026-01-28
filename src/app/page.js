@@ -14,10 +14,17 @@ export default function Home() {
   const [isExplorerOpen, setIsExplorerOpen] = useState(false);
 
   // Sentinel-2 State
-  const [startDate, setStartDate] = useState("2023-05-01");
-  const [endDate, setEndDate] = useState("2023-07-31");
+  // Default to last 30 days
+  const today = new Date();
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(today.getDate() - 30);
+
+  const [startDate, setStartDate] = useState(thirtyDaysAgo.toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
+
   const [cloudCover, setCloudCover] = useState(60);
   const [sensor, setSensor] = useState("Sentinel-2");
+  const [visOption, setVisOption] = useState("True Color (RGB)");
   const [geometry, setGeometry] = useState(null);
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -53,7 +60,6 @@ export default function Home() {
           .addTo(map.current);
       }
 
-      // Auto-open explorer if location is set
       setIsExplorerOpen(true);
     });
 
@@ -98,6 +104,7 @@ export default function Home() {
           endDate,
           cloudCover,
           sensor,
+          visOption,
           geometry
         })
       });
@@ -105,10 +112,6 @@ export default function Home() {
       if (!res.ok) throw new Error("Search failed");
       const data = await res.json();
       setImages(data.images || []);
-
-      // Close explorer slightly or keep open? 
-      // User might want to adjust filters. 
-      // Maybe specific interactions close it.
     } catch (e) {
       setError(e.message);
     } finally {
@@ -125,7 +128,8 @@ export default function Home() {
         body: JSON.stringify({
           action: "getMap",
           imageId,
-          sensor
+          sensor,
+          visOption
         })
       });
 
@@ -162,10 +166,7 @@ export default function Home() {
     }
   };
 
-  // Helper to calculate dot color based on cloud percentage
-  // 0% -> White/Light, 100% -> Dark Grey
   const getDotColor = (cloudPct) => {
-    // 0 clouds => 255 (white), 100 clouds => 100 (dark grey)
     const val = Math.floor(255 - (cloudPct * 1.55));
     return `rgb(${val}, ${val}, ${val})`;
   };
@@ -219,6 +220,18 @@ export default function Home() {
                   <option value="Sentinel-2">Sentinel-2 Level-2A</option>
                   <option value="Sentinel-2 Harmonized">Sentinel-2 Harmonized</option>
                   <option value="Landsat 9">Landsat 9 Level-2</option>
+                </select>
+
+                <label className={styles.label}>Visualization</label>
+                <select
+                  className={styles.select}
+                  value={visOption}
+                  onChange={(e) => setVisOption(e.target.value)}
+                >
+                  <option value="True Color (RGB)">True Color (RGB)</option>
+                  <option value="False Color (Infrared)">False Color (Infrared)</option>
+                  <option value="NDVI">NDVI (Vegetation)</option>
+                  <option value="NDWI">NDWI (Water)</option>
                 </select>
 
                 <label className={styles.label}>Date Range</label>
