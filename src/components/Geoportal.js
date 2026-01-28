@@ -52,6 +52,10 @@ export default function Geoportal() {
     }, []);
 
     const [drawMode, setDrawMode] = useState('simple'); // simple, cut
+    const drawModeRef = useRef(drawMode);
+    useEffect(() => {
+        drawModeRef.current = drawMode;
+    }, [drawMode]);
 
     const [cloudCover, setCloudCover] = useState(60);
     const [sensor, setSensor] = useState("Sentinel-2");
@@ -243,7 +247,7 @@ export default function Geoportal() {
                 const data = drawControl.getAll();
 
                 // If in CUT mode
-                if (drawMode === 'cut' && e.type === 'draw.create') {
+                if (drawModeRef.current === 'cut' && e.type === 'draw.create') {
                     const cutter = e.features[0];
                     if (cutter && cutter.geometry.type === 'LineString') {
                         try {
