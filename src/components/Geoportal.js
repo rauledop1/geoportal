@@ -221,6 +221,8 @@ export default function Geoportal() {
             if (!res.ok) throw new Error("Failed to get layer");
             const { urlFormat } = await res.json();
 
+            console.log("Adding Layer:", { imageId, target, urlFormat });
+
             const sourceId = "ee-source-" + target;
             const layerId = "ee-layer-" + target;
 
@@ -229,7 +231,10 @@ export default function Geoportal() {
             if (target === 'left') targetMap = mapLeft.current;
             if (target === 'right') targetMap = mapRight.current;
 
-            if (!targetMap) return;
+            if (!targetMap) {
+                console.error("Target map not found:", target);
+                return;
+            }
 
             if (targetMap.getLayer(layerId)) targetMap.removeLayer(layerId);
             if (targetMap.getSource(sourceId)) targetMap.removeSource(sourceId);
