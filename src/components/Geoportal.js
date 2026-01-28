@@ -206,6 +206,144 @@ export default function Geoportal() {
         ]
     }), [snapPixelDistance, snappingEnabled]);
 
+    // Draw Configuration
+    // ... (drawOptions is here) ...
+
+    // Helper for Draw Creation (Geometry Update + Cut Logic)
+
+    // Helper for Draw Creation (Geometry Update + Cut Logic + Autocomplete)
+    const handleDrawCreate = (e, currentDrawControl) => {
+        // 1. Autocomplete / Erase Overlap
+        if (eraseOverlap && (e.type === 'draw.create' || e.type === 'draw.update')) {
+            const features = currentDrawControl.getAll().features;
+            const modifiedFeatures = e.features; // Array of features being created/updated
+
+            modifiedFeatures.forEach(modFeature => {
+                if (modFeature.geometry.type === 'Polygon' || modFeature.geometry.type === 'MultiPolygon') {
+                    // Find other polygons
+                    const others = features.filter(f =>
+                        f.id !== modFeature.id &&
+                        (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
+                    );
+
+                    if (others.length > 0) {
+                        let currentGeometry = modFeature;
+                        let clipped = false;
+
+                        for (const other of others) {
+                            try {
+                                const diff = turf.difference(currentGeometry, other);
+                                if (diff) {
+                                    currentGeometry = diff;
+                                    clipped = true;
+                                } else {
+                                    // Fully erased?
+                                    currentGeometry = null;
+                                    clipped = true;
+                                    break;
+                                }
+                            } catch (err) {
+                                console.warn("Clipping error", err);
+                            }
+                        }
+
+                        if (clipped) {
+                            if (currentGeometry) {
+                                // Update the feature in draw
+                                currentGeometry.id = modFeature.id;
+                                currentGeometry.properties = modFeature.properties;
+                                currentDrawControl.add(currentGeometry);
+                            } else {
+                                // Fully erased, remove it
+                                currentDrawControl.delete(modFeature.id);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 2. Cut Logic
+        if (drawModeRef.current === 'cut' && e.type === 'draw.create') {
+            const cutter = e.features[0];
+            if (cutter && cutter.geometry.type === 'LineString') {
+                try {
+                    const allData = currentDrawControl.getAll();
+                    // Target polygons to be cut (exclude the cutter itself)
+                    const targets = allData.features.filter(f =>
+                        f.id !== cutter.id &&
+                        (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
+                    );
+
+                    // Buffer the cutter line (minimal buffer to avoid gap)
+                    const cutterPoly = turf.buffer(cutter, 0.000001, { units: 'kilometers' });
+
+                    const newFeatures = [];
+                    const idsToDelete = [cutter.id]; // Always remove the cutter line
+
+                    let cutPerformed = false;
+
+                    targets.forEach(target => {
+                        const diff = turf.difference(target, cutterPoly);
+
+                        if (diff) {
+                            idsToDelete.push(target.id);
+                            if (diff.geometry.type === 'MultiPolygon') {
+                                diff.geometry.coordinates.forEach(coords => {
+                                    newFeatures.push({
+                                        type: 'Feature',
+                                        properties: target.properties,
+                                        geometry: {
+                                            type: 'Polygon',
+                                            coordinates: coords
+                                        }
+                                    });
+                                });
+                            } else {
+                                newFeatures.push(diff);
+                            }
+                            cutPerformed = true;
+                        }
+                    });
+
+                    if (cutPerformed) {
+                        currentDrawControl.delete(idsToDelete);
+                        if (newFeatures.length > 0) {
+                            currentDrawControl.add({ type: 'FeatureCollection', features: newFeatures });
+                            // Update state with the first valid geometry so something is selected
+                            setGeometry(newFeatures[0].geometry);
+                        } else {
+                            setGeometry(null);
+                        }
+                    } else {
+                        currentDrawControl.delete([cutter.id]);
+                    }
+                } catch (err) {
+                    console.error("Cut error", err);
+                    alert("Cut failed: " + err.message);
+                }
+
+                // Reset mode
+                setTimeout(() => {
+                    currentDrawControl.changeMode('simple_select');
+                }, 10);
+                setDrawMode('simple');
+            }
+        }
+
+        // 3. Update Geometry State
+        // Use timeout to let drawControl settle if needed
+        setTimeout(() => {
+            const finalData = currentDrawControl.getAll();
+            if (finalData.features.length > 0) {
+                const lastFeature = finalData.features[finalData.features.length - 1];
+                setGeometry(lastFeature.geometry);
+            } else {
+                setGeometry(null);
+            }
+        }, 0);
+    };
+
     // Initialize Map(s) based on mode
     useEffect(() => {
         // Cleanup previous maps
@@ -265,20 +403,11 @@ export default function Geoportal() {
                         draw.current = drawControl; // Persist for helper functions
 
                         // Event Listeners for Draw
-                        const updateGeometry = (e) => {
-                            const data = drawControl.getAll();
-                            if (data.features.length > 0) {
-                                // Update geometry state from draw
-                                const feat = data.features[0];
-                                setGeometry(feat.geometry);
-                            } else {
-                                setGeometry(null);
-                            }
-                        };
+                        const onDrawUpdate = (e) => handleDrawCreate(e, drawControl);
 
-                        mapLeft.current.on('draw.create', updateGeometry);
-                        mapLeft.current.on('draw.delete', updateGeometry);
-                        mapLeft.current.on('draw.update', updateGeometry);
+                        mapLeft.current.on('draw.create', onDrawUpdate);
+                        mapLeft.current.on('draw.delete', onDrawUpdate);
+                        mapLeft.current.on('draw.update', onDrawUpdate);
 
                         // Initial snap state
                         drawControl.options.snap = snappingEnabled;
@@ -339,168 +468,12 @@ export default function Geoportal() {
             // Restoring previous geometry if exists
             // ... (existing logic for restoring geometry into draw)
 
-            const updateGeometryFromDraw = (e) => {
-                const data = drawControl.getAll();
-                const features = data.features;
-
-                // AUTOCOMPLETE / ERASE OVERLAP LOGIC
-                // Check if we need to clip the *newly created/updated* feature against others.
-                if (eraseOverlap && (e.type === 'draw.create' || e.type === 'draw.update')) {
-                    const modifiedFeatures = e.features; // Array of features being created/updated
-
-                    modifiedFeatures.forEach(modFeature => {
-                        if (modFeature.geometry.type === 'Polygon' || modFeature.geometry.type === 'MultiPolygon') {
-                            // Find other polygons
-                            const others = features.filter(f =>
-                                f.id !== modFeature.id &&
-                                (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
-                            );
-
-                            if (others.length > 0) {
-                                // Union others to create a mask? Or iterate subtract?
-                                // Iterative subtract is safer but slower?
-                                // Let's try to difference against each overlapping one.
-
-                                let currentGeometry = modFeature;
-                                let clipped = false;
-
-                                // Optimization: Filter strictly overlapping?
-                                // Turf difference is fast enough for few polygons.
-
-                                for (const other of others) {
-                                    try {
-                                        const diff = turf.difference(currentGeometry, other);
-                                        if (diff) {
-                                            currentGeometry = diff;
-                                            clipped = true;
-                                        } else {
-                                            // Fully erased?
-                                            currentGeometry = null;
-                                            clipped = true;
-                                            break;
-                                        }
-                                    } catch (err) {
-                                        console.warn("Clipping error", err);
-                                    }
-                                }
-
-                                if (clipped) {
-                                    if (currentGeometry) {
-                                        // Update the feature in draw
-                                        // We must preserve ID and properties
-                                        currentGeometry.id = modFeature.id;
-                                        currentGeometry.properties = modFeature.properties;
-                                        drawControl.add(currentGeometry);
-
-                                        // Update internal var for 'lastFeature' logic below if needed
-                                        // (Assuming drawControl.getAll() will reflect this in next tick, but for now we proceed)
-                                    } else {
-                                        // Fully erased, remove it
-                                        drawControl.delete(modFeature.id);
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                    // Refresh data after modification
-                    // data = drawControl.getAll(); // const assignment, can't
-                }
-
-                const updatedData = drawControl.getAll(); // Refresh
-
-                // If in CUT mode
-                if (drawModeRef.current === 'cut' && e.type === 'draw.create') {
-                    const cutter = e.features[0];
-                    if (cutter && cutter.geometry.type === 'LineString') {
-                        try {
-                            const allData = drawControl.getAll();
-                            // Target polygons to be cut (exclude the cutter itself)
-                            const targets = allData.features.filter(f =>
-                                f.id !== cutter.id &&
-                                (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
-                            );
-
-                            // Buffer the cutter line (minimal buffer to avoid gap)
-                            // 1mm = 0.000001 km
-                            const cutterPoly = turf.buffer(cutter, 0.000001, { units: 'kilometers' });
-
-                            const newFeatures = [];
-                            const idsToDelete = [cutter.id]; // Always remove the cutter line
-
-                            let cutPerformed = false;
-
-                            targets.forEach(target => {
-                                const diff = turf.difference(target, cutterPoly);
-
-                                if (diff) {
-                                    idsToDelete.push(target.id);
-
-                                    // If result is MultiPolygon, split it into separate features
-                                    if (diff.geometry.type === 'MultiPolygon') {
-                                        diff.geometry.coordinates.forEach(coords => {
-                                            newFeatures.push({
-                                                type: 'Feature',
-                                                properties: target.properties,
-                                                geometry: {
-                                                    type: 'Polygon',
-                                                    coordinates: coords
-                                                }
-                                            });
-                                        });
-                                    } else {
-                                        // Keep as simple Polygon
-                                        newFeatures.push(diff);
-                                    }
-                                    cutPerformed = true;
-                                } else {
-                                    // If diff is null (e.g. fully erased), we don't add anything back
-                                }
-                            });
-
-                            if (cutPerformed) {
-                                drawControl.delete(idsToDelete);
-                                if (newFeatures.length > 0) {
-                                    drawControl.add({ type: 'FeatureCollection', features: newFeatures });
-                                    // Update state with the first valid geometry so something is selected
-                                    setGeometry(newFeatures[0].geometry);
-                                } else {
-                                    setGeometry(null);
-                                }
-                            }
-                        } catch (err) {
-                            console.error("Cut error", err);
-                            alert("Cut failed: " + err.message);
-                        }
-
-                        // Reset to simple select mode to execute the cut visual update
-                        // (Wait, 'simple' is our internal state, mapbox-gl-draw mode should also be reset?)
-                        // "draw_line_string" was active. We should switch to "simple_select"
-                        setTimeout(() => {
-                            drawControl.changeMode('simple_select');
-                        }, 10);
-
-                        setDrawMode('simple');
-                        return;
-                    }
-                }
-
-                // Normal update
-                if (data.features.length > 0) {
-                    // Set geometry to the last feature added (assumed most relevant for search)
-                    // Or stick to 0? If I draw a second one, it's at end of array?
-                    // MapboxDraw usually appends?
-                    // Let's use the LAST feature as the "active" geometry for search.
-                    const lastFeature = data.features[data.features.length - 1];
-                    setGeometry(lastFeature.geometry);
-                } else {
-                    setGeometry(null);
-                }
-            };
+            const updateGeometryFromDraw = (e) => handleDrawCreate(e, drawControl);
 
             map.current.on('draw.create', updateGeometryFromDraw);
             map.current.on('draw.delete', updateGeometryFromDraw);
             map.current.on('draw.update', updateGeometryFromDraw);
+
 
             // Initial snap state
             drawControl.options.snap = snappingEnabled;

@@ -300,6 +300,8 @@
   padding-bottom: 20px;
   /* border-top: 1px solid rgba(255, 255, 255, 0.3); Removed per request */
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+  pointer-events: none;
+  /* Allow clicking through transparent areas */
 }
 
 .timelineScroll {
@@ -312,6 +314,8 @@
   gap: 0;
   /* Removing gap, using margins/width for spacing to make line continuous if needed */
   scrollbar-width: thin;
+  pointer-events: auto;
+  /* Re-enable clicking on scrollable content */
 }
 
 .timelineItem {
