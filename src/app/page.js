@@ -232,6 +232,13 @@ export default function Home() {
             <div className={styles.imageList}>
               {images.map((img) => (
                 <div key={img.id} className={styles.imageCard}>
+                  {img.thumbnail && (
+                    <img
+                      src={img.thumbnail}
+                      alt="Sentinel-2 Thumbnail"
+                      className={styles.thumbnail}
+                    />
+                  )}
                   <div className={styles.cardHeader}>
                     <span className={styles.cardDate}>
                       {img.id === activeLayerId && <span className={styles.activeImageMarker}></span>}

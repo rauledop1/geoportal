@@ -18,7 +18,9 @@ export async function POST(req) {
         .sort("CLOUDY_PIXEL_PERCENTAGE");
 
       // Extract necessary metadata
-      const imageList = col.map((img) => {
+      const imageList = col.limit(50); // Limit to 50
+
+      const featureCollection = imageList.map((img) => {
         return ee.Feature(null, {
           id: img.id(),
           date: img.date().format("YYYY-MM-dd"),
@@ -26,21 +28,37 @@ export async function POST(req) {
         });
       });
 
-      // Get the data from Earth Engine
-      // evaluate() is needed to get the actual JavaScript objects/list from the server
-      const result = await evaluate(imageList.toList(50)); // Limit to 50 results
+      const result = await evaluate(featureCollection.toList(50));
       const features = result.map((f) => f.properties);
 
-      return NextResponse.json({ images: features }, { status: 200 });
+      // Generate thumbnails for each image
+      const featuresWithThumbnails = await Promise.all(features.map(async (feat) => {
+        const image = ee.Image(feat.id);
+        const vis = {
+          bands: ['B8', 'B4', 'B3'],
+          min: 0,
+          max: 3000,
+          gamma: 1.4,
+        };
+        try {
+          const thumbnail = await getThumbUrl(image, vis);
+          return { ...feat, thumbnail };
+        } catch (e) {
+          console.error(`Failed to get thumb for ${feat.id}`, e);
+          return { ...feat, thumbnail: null };
+        }
+      }));
+
+      return NextResponse.json({ images: featuresWithThumbnails }, { status: 200 });
     }
 
     if (action === "getMap") {
       const image = ee.Image(imageId);
       const vis = {
         bands: ['B8', 'B4', 'B3'],
-        min: 0, // Using 0-3000 as per common S2 viz, script had 750 but 0 might be safer for general
+        min: 0,
         max: 3000,
-        gamma: 1.4, // Adjusted gamma for better look
+        gamma: 1.4,
       };
 
       const { urlFormat } = await getMapId(image, vis);
@@ -55,7 +73,7 @@ export async function POST(req) {
   }
 }
 
-// Helper functions (same as before but simplified)
+// Helper functions
 function authenticate(key) {
   return new Promise((resolve, reject) => {
     ee.data.authenticateViaPrivateKey(
@@ -74,6 +92,18 @@ function getMapId(image, vis) {
   });
 }
 
+function getThumbUrl(image, vis) {
+  return new Promise((resolve, reject) => {
+    image.visualize(vis).getThumbURL({
+      dimensions: '100x100',
+      format: 'jpg'
+    }, (url, error) => {
+      if (error) reject(new Error(error));
+      else resolve(url);
+    });
+  });
+}
+
 function evaluate(obj) {
   return new Promise((resolve, reject) =>
     obj.evaluate((result, error) =>
@@ -81,4 +111,3 @@ function evaluate(obj) {
     )
   );
 }
-
