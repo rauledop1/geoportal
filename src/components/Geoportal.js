@@ -79,6 +79,133 @@ export default function Geoportal() {
     // Location Search State
     const [locationQuery, setLocationQuery] = useState("");
 
+    // Draw Configuration
+    const drawOptions = useMemo(() => ({
+        displayControlsDefault: false,
+        userProperties: true,
+        modes: {
+            ...MapboxDraw.modes,
+            draw_polygon: SnapPolygonMode,
+            draw_line_string: SnapLineMode,
+            draw_point: SnapPointMode,
+            direct_select: SnapDirectSelect
+        },
+        snap: true,
+        snapOptions: {
+            snapPx: snapPixelDistance,
+            snapToMidPoints: true,
+            snapVertexPriorityDistance: 0.0025,
+        },
+        snapModeOptions: {
+            overlap: true
+        },
+        controls: {
+            polygon: true,
+            trash: true
+        },
+        styles: [
+            // ACTIVE (being drawn)
+            // line stroke
+            {
+                "id": "gl-draw-line",
+                "type": "line",
+                "filter": ["all", ["==", "$type", "LineString"], ["!=", "mode", "static"]],
+                "layout": {
+                    "line-cap": "round",
+                    "line-join": "round"
+                },
+                "paint": {
+                    "line-color": "#D20C0C",
+                    "line-dasharray": [0.2, 2],
+                    "line-width": 2
+                }
+            },
+            // polygon fill
+            {
+                "id": "gl-draw-polygon-fill",
+                "type": "fill",
+                "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
+                "paint": {
+                    "fill-color": "#D20C0C",
+                    "fill-outline-color": "#D20C0C",
+                    "fill-opacity": 0.1
+                }
+            },
+            // polygon mid points
+            {
+                "id": "gl-draw-polygon-midpoint",
+                "type": "circle",
+                "filter": ["all",
+                    ["==", "$type", "Point"],
+                    ["==", "meta", "midpoint"]],
+                "paint": {
+                    "circle-radius": 5, // Larger
+                    "circle-color": "#fbb03b"
+                }
+            },
+            // polygon outline stroke
+            // This doesn't style the first edge of the polygon, which uses the line stroke.
+            {
+                "id": "gl-draw-polygon-stroke-active",
+                "type": "line",
+                "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
+                "layout": {
+                    "line-cap": "round",
+                    "line-join": "round"
+                },
+                "paint": {
+                    "line-color": "#D20C0C",
+                    "line-dasharray": [0.2, 2],
+                    "line-width": 2
+                }
+            },
+            // vertex point halos
+            {
+                "id": "gl-draw-polygon-and-line-vertex-halo-active",
+                "type": "circle",
+                "filter": ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"], ["!=", "mode", "static"]],
+                "paint": {
+                    "circle-radius": 8, // Larger halo
+                    "circle-color": "#FFF"
+                }
+            },
+            // vertex points
+            {
+                "id": "gl-draw-polygon-and-line-vertex-active",
+                "type": "circle",
+                "filter": ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"], ["!=", "mode", "static"]],
+                "paint": {
+                    "circle-radius": 6, // Larger vertex
+                    "circle-color": "#D20C0C",
+                }
+            },
+            // INACTIVE (static)
+            {
+                "id": "gl-draw-polygon-fill-static",
+                "type": "fill",
+                "filter": ["all", ["==", "$type", "Polygon"], ["==", "mode", "static"]],
+                "paint": {
+                    "fill-color": "#000",
+                    "fill-outline-color": "#000",
+                    "fill-opacity": 0.1
+                }
+            },
+            {
+                "id": "gl-draw-polygon-stroke-static",
+                "type": "line",
+                "filter": ["all", ["==", "$type", "Polygon"], ["==", "mode", "static"]],
+                "layout": {
+                    "line-cap": "round",
+                    "line-join": "round"
+                },
+                "paint": {
+                    "line-color": "#000",
+                    "line-width": 2
+                }
+            }
+        ]
+    }), [snapPixelDistance, snappingEnabled]);
+
     // Initialize Map(s) based on mode
     useEffect(() => {
         // Cleanup previous maps
@@ -128,6 +255,34 @@ export default function Geoportal() {
 
                     // Restore Active Layer to Left Map if exists
                     if (mapLeft.current) {
+                        // Initialize Draw Control for Left Map
+                        const drawControl = new MapboxDraw(drawOptions);
+                        mapLeft.current.addControl(drawControl, 'bottom-right'); // Or top-left? Single map puts it? No default pos.
+                        // Actually, Single map puts nav bottom-right. Let's look further down.
+                        // Single map adds navigation then draw. Let's do same.
+                        mapLeft.current.addControl(new NavigationControl(), 'bottom-right');
+
+                        draw.current = drawControl; // Persist for helper functions
+
+                        // Event Listeners for Draw
+                        const updateGeometry = (e) => {
+                            const data = drawControl.getAll();
+                            if (data.features.length > 0) {
+                                // Update geometry state from draw
+                                const feat = data.features[0];
+                                setGeometry(feat.geometry);
+                            } else {
+                                setGeometry(null);
+                            }
+                        };
+
+                        mapLeft.current.on('draw.create', updateGeometry);
+                        mapLeft.current.on('draw.delete', updateGeometry);
+                        mapLeft.current.on('draw.update', updateGeometry);
+
+                        // Initial snap state
+                        drawControl.options.snap = snappingEnabled;
+
                         mapLeft.current.once('load', () => {
                             if (activeLayerId) {
                                 console.log("Restoring active layer to Left Map:", activeLayerId);
@@ -138,9 +293,15 @@ export default function Geoportal() {
 
                         // Add click listener to Left Map (primary for interaction)
                         mapLeft.current.on('click', (e) => {
+                            // Prevent interfering with drawing modes
+                            if (drawControl.getMode() !== 'simple_select') return;
+
                             const { lng, lat } = e.lngLat;
-                            const point = { type: "Point", coordinates: [lng, lat] };
-                            setGeometry(point);
+                            // Only Point if draw is empty (same logic as single map or simpler?)
+                            if (drawControl.getAll().features.length === 0) {
+                                const point = { type: "Point", coordinates: [lng, lat] };
+                                setGeometry(point);
+                            }
                             setIsExplorerOpen(true);
                         });
                     }
@@ -171,145 +332,12 @@ export default function Geoportal() {
             map.current.addControl(new NavigationControl(), 'bottom-right');
 
             // Add Draw Control
-            const drawControl = new MapboxDraw({
-                displayControlsDefault: false,
-                userProperties: true,
-                modes: {
-                    ...MapboxDraw.modes,
-                    draw_polygon: SnapPolygonMode,
-                    draw_line_string: SnapLineMode,
-                    draw_point: SnapPointMode,
-                    direct_select: SnapDirectSelect
-                },
-                snap: true,
-                snapOptions: {
-                    snapPx: snapPixelDistance,
-                    snapToMidPoints: true,
-                    snapVertexPriorityDistance: 0.0025,
-                },
-                // Autocomplete / Overlap configuration
-                // SnapModeOptions allows 'overlap' property directly on options passed to modes?
-                // The library documentation says 'overlap' is a top level option for SnapModeOptions.
-                // But MapboxDraw initializes modes with options?
-                // Actually, we need to pass these options when modes are setup or via drawControl.
-                // The library might read from drawControl.options?
-                // Checking usage: The library reads `opts.overlap` in `SnapPolygonMode`.
-                // We'll attach it to the draw control options or try to pass it.
-                // The standard MapboxDraw way is `userProperties`. 
-                // However, mapbox-gl-draw-snap-mode reads config?
-                // Let's assume we can update it dynamically like we do for `snap`.
-                snapModeOptions: { // Helper checks this?
-                    overlap: true // Default
-                },
-                controls: {
-                    polygon: true,
-                    trash: true
-                },
-                // Styles for custom node visibility
-                styles: [
-                    // ACTIVE (being drawn)
-                    // line stroke
-                    {
-                        "id": "gl-draw-line",
-                        "type": "line",
-                        "filter": ["all", ["==", "$type", "LineString"], ["!=", "mode", "static"]],
-                        "layout": {
-                            "line-cap": "round",
-                            "line-join": "round"
-                        },
-                        "paint": {
-                            "line-color": "#D20C0C",
-                            "line-dasharray": [0.2, 2],
-                            "line-width": 2
-                        }
-                    },
-                    // polygon fill
-                    {
-                        "id": "gl-draw-polygon-fill",
-                        "type": "fill",
-                        "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
-                        "paint": {
-                            "fill-color": "#D20C0C",
-                            "fill-outline-color": "#D20C0C",
-                            "fill-opacity": 0.1
-                        }
-                    },
-                    // polygon mid points
-                    {
-                        "id": "gl-draw-polygon-midpoint",
-                        "type": "circle",
-                        "filter": ["all",
-                            ["==", "$type", "Point"],
-                            ["==", "meta", "midpoint"]],
-                        "paint": {
-                            "circle-radius": 5, // Larger
-                            "circle-color": "#fbb03b"
-                        }
-                    },
-                    // polygon outline stroke
-                    // This doesn't style the first edge of the polygon, which uses the line stroke.
-                    {
-                        "id": "gl-draw-polygon-stroke-active",
-                        "type": "line",
-                        "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
-                        "layout": {
-                            "line-cap": "round",
-                            "line-join": "round"
-                        },
-                        "paint": {
-                            "line-color": "#D20C0C",
-                            "line-dasharray": [0.2, 2],
-                            "line-width": 2
-                        }
-                    },
-                    // vertex point halos
-                    {
-                        "id": "gl-draw-polygon-and-line-vertex-halo-active",
-                        "type": "circle",
-                        "filter": ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"], ["!=", "mode", "static"]],
-                        "paint": {
-                            "circle-radius": 8, // Larger halo
-                            "circle-color": "#FFF"
-                        }
-                    },
-                    // vertex points
-                    {
-                        "id": "gl-draw-polygon-and-line-vertex-active",
-                        "type": "circle",
-                        "filter": ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"], ["!=", "mode", "static"]],
-                        "paint": {
-                            "circle-radius": 6, // Larger vertex
-                            "circle-color": "#D20C0C",
-                        }
-                    },
-                    // INACTIVE (static)
-                    {
-                        "id": "gl-draw-polygon-fill-static",
-                        "type": "fill",
-                        "filter": ["all", ["==", "$type", "Polygon"], ["==", "mode", "static"]],
-                        "paint": {
-                            "fill-color": "#000",
-                            "fill-outline-color": "#000",
-                            "fill-opacity": 0.1
-                        }
-                    },
-                    {
-                        "id": "gl-draw-polygon-stroke-static",
-                        "type": "line",
-                        "filter": ["all", ["==", "$type", "Polygon"], ["==", "mode", "static"]],
-                        "layout": {
-                            "line-cap": "round",
-                            "line-join": "round"
-                        },
-                        "paint": {
-                            "line-color": "#000",
-                            "line-width": 3
-                        }
-                    }
-                ]
-            });
+            const drawControl = new MapboxDraw(drawOptions);
             map.current.addControl(drawControl, 'top-left');
             draw.current = drawControl;
+
+            // Restoring previous geometry if exists
+            // ... (existing logic for restoring geometry into draw)
 
             const updateGeometryFromDraw = (e) => {
                 const data = drawControl.getAll();
