@@ -93,6 +93,34 @@
   height: 100%;
 }
 
+/* Comparison Maps */
+.compareContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  /* Below UI elements */
+}
+
+/* Important: The two maps must properly overlay */
+.mapLeft,
+.mapRight {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  /* Prevent selection while dragging */
+}
+
+/* The swiper line comes from maplibre-gl-compare css usually, 
+   but we can style if needed or let library handle default.
+   We just need to make sure the container holds them. */
+
+
 /* Floating Sidebar (Explorer Modal) */
 .sidebar {
   position: absolute;
@@ -191,6 +219,48 @@
   background-color: #0051a2;
 }
 
+.compareToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f0f0f0;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toggleSwitch {
+  width: 40px;
+  height: 20px;
+  background-color: #ccc;
+  border-radius: 20px;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+.toggleActive .toggleSwitch {
+  background-color: #0070f3;
+}
+
+.toggleKnob {
+  width: 16px;
+  height: 16px;
+  background-color: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+}
+
+.toggleActive .toggleKnob {
+  transform: translateX(20px);
+}
+
+
 .error {
   background-color: #fff2f2;
   color: #d32f2f;
@@ -265,6 +335,18 @@
   box-shadow: 0 0 10px rgba(0, 112, 243, 0.5);
 }
 
+.timelineDotLeft {
+  border-color: #e91e63;
+  /* Pink for Left */
+  transform: scale(1.3);
+}
+
+.timelineDotRight {
+  border-color: #00bcd4;
+  /* Cyan for Right */
+  transform: scale(1.3);
+}
+
 .timelineDate {
   font-size: 0.7rem;
   color: #666;
@@ -322,8 +404,15 @@
   font-size: 0.7rem;
   cursor: pointer;
   width: 100%;
+  margin-bottom: 5px;
 }
 
 .popoverBtn:hover {
   background-color: #0051a2;
+}
+
+.popoverRow {
+  display: flex;
+  gap: 5px;
+  width: 100%;
 }

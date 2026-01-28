@@ -2,19 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Map, Marker, NavigationControl } from "maplibre-gl";
+import Compare from "@maplibre/maplibre-gl-compare";
 import "maplibre-gl/dist/maplibre-gl.css";
+import "@maplibre/maplibre-gl-compare/dist/maplibre-gl-compare.css";
 import styles from "./page.module.css";
 
 export default function Home() {
   const mapContainer = useRef(null);
+  const leftMapContainer = useRef(null);
+  const rightMapContainer = useRef(null);
+
   const map = useRef(null);
+  const mapLeft = useRef(null);
+  const mapRight = useRef(null);
+  const compare = useRef(null);
   const marker = useRef(null);
 
   // UI State
   const [isExplorerOpen, setIsExplorerOpen] = useState(false);
+  const [isCompareMode, setIsCompareMode] = useState(false);
 
   // Sentinel-2 State
-  // Default to last 30 days
   const today = new Date();
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(today.getDate() - 30);
@@ -29,41 +37,99 @@ export default function Home() {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [activeLayerId, setActiveLayerId] = useState(null);
+
+  const [activeLayerId, setActiveLayerId] = useState(null); // For single mode
+  const [leftLayerId, setLeftLayerId] = useState(null); // For compare mode
+  const [rightLayerId, setRightLayerId] = useState(null); // For compare mode
 
   // Location Search State
   const [locationQuery, setLocationQuery] = useState("");
 
-  // Initialize Map
+  // Initialize Map(s) based on mode
   useEffect(() => {
-    if (map.current) return;
+    // Cleanup previous maps
+    if (map.current) map.current.remove();
+    if (compare.current) compare.current.remove();
+    if (mapLeft.current) mapLeft.current.remove();
+    if (mapRight.current) mapRight.current.remove();
 
-    map.current = new Map({
-      container: mapContainer.current,
-      style: "https://demotiles.maplibre.org/style.json",
-      center: [-71.5, -33.5],
-      zoom: 8,
-    });
+    map.current = null;
+    mapLeft.current = null;
+    mapRight.current = null;
+    compare.current = null;
+    marker.current = null;
 
-    map.current.addControl(new NavigationControl(), 'bottom-right');
+    const mapStyle = "https://demotiles.maplibre.org/style.json";
+    const initialCenter = geometry ? geometry.coordinates : [-71.5, -33.5];
+    const initialZoom = 8;
 
-    map.current.on('click', (e) => {
-      const { lng, lat } = e.lngLat;
-      const point = { type: "Point", coordinates: [lng, lat] };
-      setGeometry(point);
+    if (isCompareMode) {
+      // Initialize Two Maps
+      mapLeft.current = new Map({
+        container: leftMapContainer.current,
+        style: mapStyle,
+        center: initialCenter,
+        zoom: initialZoom,
+        attributionControl: false
+      });
 
-      if (marker.current) {
-        marker.current.setLngLat([lng, lat]);
-      } else {
+      mapRight.current = new Map({
+        container: rightMapContainer.current,
+        style: mapStyle,
+        center: initialCenter,
+        zoom: initialZoom,
+        attributionControl: false
+      });
+
+      // Sync interactions via Compare
+      compare.current = new Compare(mapLeft.current, mapRight.current, mapContainer.current, {});
+
+      // Add marker to BOTH maps if geometry exists
+      if (geometry) {
+        new Marker({ color: "#0070f3" }).setLngLat(geometry.coordinates).addTo(mapLeft.current);
+        new Marker({ color: "#0070f3" }).setLngLat(geometry.coordinates).addTo(mapRight.current);
+      }
+
+      // Add click listener to Left Map (primary for interaction)
+      mapLeft.current.on('click', handleMapClick);
+
+    } else {
+      // Initialize Single Map
+      map.current = new Map({
+        container: mapContainer.current,
+        style: mapStyle,
+        center: initialCenter,
+        zoom: initialZoom,
+      });
+
+      map.current.addControl(new NavigationControl(), 'bottom-right');
+
+      if (geometry) {
         marker.current = new Marker({ color: "#0070f3" })
-          .setLngLat([lng, lat])
+          .setLngLat(geometry.coordinates)
           .addTo(map.current);
       }
 
-      setIsExplorerOpen(true);
-    });
+      map.current.on('click', handleMapClick);
+    }
 
-  }, []);
+  }, [isCompareMode]); // Re-run when mode switches
+
+  const handleMapClick = (e) => {
+    const { lng, lat } = e.lngLat;
+    const point = { type: "Point", coordinates: [lng, lat] };
+    setGeometry(point);
+    setIsExplorerOpen(true);
+
+    // Update markers dynamically without reload if possible, else effect handles it
+    if (!isCompareMode && map.current) {
+      if (!marker.current) {
+        marker.current = new Marker({ color: "#0070f3" }).setLngLat([lng, lat]).addTo(map.current);
+      } else {
+        marker.current.setLngLat([lng, lat]);
+      }
+    }
+  };
 
   const handleLocationSearch = async (e) => {
     e.preventDefault();
@@ -75,7 +141,14 @@ export default function Home() {
 
       if (data && data.length > 0) {
         const { lat, lon } = data[0];
-        map.current.flyTo({ center: [lon, lat], zoom: 12 });
+        const center = [lon, lat];
+
+        if (isCompareMode) {
+          mapLeft.current.flyTo({ center, zoom: 12 });
+          mapRight.current.flyTo({ center, zoom: 12 });
+        } else {
+          map.current.flyTo({ center, zoom: 12 });
+        }
       } else {
         alert("Location not found");
       }
@@ -119,7 +192,7 @@ export default function Home() {
     }
   };
 
-  const handleLayerAdd = async (imageId) => {
+  const handleLayerAdd = async (imageId, target = 'single') => {
     setLoading(true);
     try {
       const res = await fetch("/api/ee", {
@@ -136,19 +209,26 @@ export default function Home() {
       if (!res.ok) throw new Error("Failed to get layer");
       const { urlFormat } = await res.json();
 
-      const layerId = "ee-layer";
-      const sourceId = "ee-source";
+      const sourceId = "ee-source-" + target;
+      const layerId = "ee-layer-" + target;
 
-      if (map.current.getLayer(layerId)) map.current.removeLayer(layerId);
-      if (map.current.getSource(sourceId)) map.current.removeSource(sourceId);
+      let targetMap;
+      if (target === 'single') targetMap = map.current;
+      if (target === 'left') targetMap = mapLeft.current;
+      if (target === 'right') targetMap = mapRight.current;
 
-      map.current.addSource(sourceId, {
+      if (!targetMap) return;
+
+      if (targetMap.getLayer(layerId)) targetMap.removeLayer(layerId);
+      if (targetMap.getSource(sourceId)) targetMap.removeSource(sourceId);
+
+      targetMap.addSource(sourceId, {
         type: "raster",
         tiles: [urlFormat],
         tileSize: 256,
       });
 
-      map.current.addLayer({
+      targetMap.addLayer({
         id: layerId,
         type: "raster",
         source: sourceId,
@@ -156,7 +236,9 @@ export default function Home() {
         maxzoom: 22,
       });
 
-      setActiveLayerId(imageId);
+      if (target === 'single') setActiveLayerId(imageId);
+      if (target === 'left') setLeftLayerId(imageId);
+      if (target === 'right') setRightLayerId(imageId);
 
     } catch (e) {
       setError(e.message);
@@ -169,6 +251,15 @@ export default function Home() {
   const getDotColor = (cloudPct) => {
     const val = Math.floor(255 - (cloudPct * 1.55));
     return `rgb(${val}, ${val}, ${val})`;
+  };
+
+  // Timeline Interactions
+  const handleTimelineClick = (imgId, side) => {
+    if (isCompareMode) {
+      handleLayerAdd(imgId, side);
+    } else {
+      handleLayerAdd(imgId, 'single');
+    }
   };
 
   return (
@@ -206,6 +297,17 @@ export default function Home() {
             <div className={styles.subtitle}>Configure filters below</div>
 
             <div className={styles.section}>
+              {/* Compare Mode Toggle */}
+              <div
+                className={`${styles.compareToggle} ${isCompareMode ? styles.toggleActive : ''}`}
+                onClick={() => setIsCompareMode(!isCompareMode)}
+              >
+                <span>Compare Mode (Swipe)</span>
+                <div className={styles.toggleSwitch}>
+                  <div className={styles.toggleKnob}></div>
+                </div>
+              </div>
+
               <div className={styles.instruction}>
                 {geometry ? "✅ Location selected" : "Click map to select location"}
               </div>
@@ -271,12 +373,12 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Bottom Timeline Results */}
+        {/* Timeline Results */}
         {images.length > 0 && (
           <div className={styles.timelineContainer}>
             <div className={styles.timelineScroll}>
               {images.map((img) => (
-                <div key={img.id} className={styles.timelineItem} onClick={() => handleLayerAdd(img.id)}>
+                <div key={img.id} className={styles.timelineItem}>
                   <div className={styles.timelinePopover}>
                     {img.thumbnail && (
                       <img src={img.thumbnail} alt="Preview" className={styles.thumbnail} />
@@ -285,11 +387,24 @@ export default function Home() {
                       <b>{img.date}</b><br />
                       {Math.round(img.cloud)}% Clouds
                     </div>
-                    <button className={styles.popoverBtn}>Visualize</button>
+
+                    {!isCompareMode ? (
+                      <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img.id)}>Visualize</button>
+                    ) : (
+                      <div className={styles.popoverRow}>
+                        <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img.id, 'left')}>Left</button>
+                        <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img.id, 'right')}>Right</button>
+                      </div>
+                    )}
                   </div>
 
                   <div
-                    className={`${styles.timelineDot} ${img.id === activeLayerId ? styles.timelineDotActive : ''}`}
+                    className={`
+                       ${styles.timelineDot} 
+                       ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
+                       ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
+                       ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
+                     `}
                     style={{ backgroundColor: getDotColor(img.cloud) }}
                   ></div>
 
@@ -300,7 +415,15 @@ export default function Home() {
           </div>
         )}
 
-        <div ref={mapContainer} className={styles.mapContainer} />
+        {/* Map Container - Handles both Single and Compare modes */}
+        <div className={styles.mapContainer} ref={mapContainer}>
+          {isCompareMode && (
+            <>
+              <div ref={leftMapContainer} className={styles.mapLeft}></div>
+              <div ref={rightMapContainer} className={styles.mapRight}></div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
