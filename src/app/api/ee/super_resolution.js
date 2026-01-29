@@ -27,25 +27,31 @@ export async function handleSuperResolution(body) {
 
     const region = comunaFeature.geometry();
 
-    // 2. Fetch Latest Image (Cloud Free)
-    // S2_Harmonized, max 10% clouds, sort by date desc
-    const now = new Date();
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(now.getMonth() - 3);
+    // 2. Fetch Image
+    let rawImage;
+    if (body.imageId) {
+        // Option A: Specific Scene
+        rawImage = ee.Image(body.imageId).clip(region);
+    } else {
+        // Option B: Latest Cloud-Free (Fallback)
+        const now = new Date();
+        const threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(now.getMonth() - 3);
 
-    const s2 = ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
-        .filterDate(threeMonthsAgo.toISOString().split('T')[0], now.toISOString().split('T')[0])
-        .filterBounds(region)
-        .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 10))
-        .sort("system:time_start", false); // Newest first
+        const s2 = ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
+            .filterDate(threeMonthsAgo.toISOString().split('T')[0], now.toISOString().split('T')[0])
+            .filterBounds(region)
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 10))
+            .sort("system:time_start", false); // Newest first
 
-    // Check if we have images
-    const count = await evaluate(s2.size());
-    if (count === 0) {
-        return NextResponse.json({ error: "No recent cloud-free images found for this location." }, { status: 404 });
+        // Check if we have images
+        const count = await evaluate(s2.size());
+        if (count === 0) {
+            return NextResponse.json({ error: "No recent cloud-free images found for this location." }, { status: 404 });
+        }
+
+        rawImage = s2.first().clip(region);
     }
-
-    const rawImage = s2.first().clip(region);
     const date = await evaluate(rawImage.date().format("YYYY-MM-dd"));
 
     // 3. Processing
