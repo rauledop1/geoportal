@@ -136,7 +136,7 @@ export async function handleMonitorAnalysis(body) {
     const vectors = zones.reduceToVectors({
         geometry: region,
         crs: 'EPSG:4326',
-        scale: 20, // 10 might be too granular for API timeout
+        scale: 30, // Increased to 30 to reduce vertex count and prevent timeouts
         geometryType: 'polygon',
         eightConnected: true,
         maxPixels: 1e8,
@@ -146,31 +146,41 @@ export async function handleMonitorAnalysis(body) {
     // 6. URLs
     // Visualizations
     const vizRGB = { bands: ['B4', 'B3', 'B2'], min: 0, max: 3000 };
-    // const vizDiff = { min: 0, max: 0.5, palette: ["008000","ff0000"] }; 
-    // Actually, for the map we want the Polygons (vectors) or the Raster?
-    // User script: Map.addLayer(vectors, viz_ndiiReclass_vector, 'Diferencias') -> White
-    // Map.addLayer(delta_ndii.clip(pre), viz_deltandii, 'Cambios') -> Raster
-
-    // Let's return Raster for colored overlay and Vectors for download?
-    // Or Vectors for overlay?
-    // Let's handle Raster MapID.
     const vizDiff = { min: 0, max: 0.5, palette: ["green", "red"] };
 
-    const { urlFormat: urlTarget } = await getMapId(targetImg, vizRGB);
-    const { urlFormat: urlDiff } = await getMapId(diff.updateMask(zones), vizDiff); // Only show changes
+    // Run MapId calls in parallel
+    const [mapTarget, mapDiff] = await Promise.all([
+        getMapId(targetImg, vizRGB),
+        getMapId(diff.updateMask(zones), vizDiff)
+    ]);
 
-    // Download URL (KMZ)
-    const downloadUrl = await new Promise((resolve, reject) => {
-        vectors.getDownloadURL({
-            format: 'kmz',
-            filename: `monitor_${comuna}_${imageId}`
-        }, (url, err) => {
-            if (err) resolve(null); // Fail gracefully
-            else resolve(url);
+    const urlTarget = mapTarget.urlFormat;
+    const urlDiff = mapDiff.urlFormat;
+
+    // Download URL (KMZ) - Wrap in try/catch to avoid crashing the whole request
+    let downloadUrl = null;
+    try {
+        downloadUrl = await new Promise((resolve, reject) => {
+            vectors.getDownloadURL({
+                format: 'kmz',
+                filename: `monitor_${comuna}_${imageId}`
+            }, (url, err) => {
+                if (err) resolve(null); // Fail gracefully
+                else resolve(url);
+            });
         });
-    });
+    } catch (e) {
+        console.error("Download URL generation failed:", e);
+    }
 
-    const boundsInfo = await evaluate(region.bounds());
+    // Bounds - Wrap in try/catch
+    let boundsInfo = null;
+    try {
+        // Try getting bounds of the geometry
+        boundsInfo = await evaluate(region.bounds());
+    } catch (e) {
+        console.error("Bounds calculation failed:", e);
+    }
 
     return NextResponse.json({
         targetMap: urlTarget,
