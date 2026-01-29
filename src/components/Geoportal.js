@@ -46,7 +46,12 @@ export default function Geoportal() {
     const [analysisResult, setAnalysisResult] = useState(null);
     const [selectedMonitorImage, setSelectedMonitorImage] = useState(null);
 
-    // Initial Load of Comunas
+    // Geomorphology State
+    const [selectedGeomComuna, setSelectedGeomComuna] = useState('');
+    const [geomType, setGeomType] = useState('Slope'); // Slope, Aspect, Hillshade, DEM
+    const [geomResult, setGeomResult] = useState(null);
+
+    // Initial Load of Comunas (Shared)
     useEffect(() => {
         fetch("/api/ee", {
             method: "POST",
@@ -153,6 +158,71 @@ export default function Geoportal() {
 
         } catch (e) {
             setError("Analysis failed: " + e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGeomAnalysis = async () => {
+        if (!selectedGeomComuna) return;
+        setLoading(true);
+        setError(null);
+        setGeomResult(null);
+
+        try {
+            const res = await fetch("/api/ee", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "geom-analysis",
+                    comuna: selectedGeomComuna,
+                    type: geomType
+                })
+            });
+            const data = await res.json();
+
+            setGeomResult(data);
+
+            if (map.current) {
+                // Clear Monitor Layers if any
+                if (map.current.getLayer('monitor-target')) map.current.removeLayer('monitor-target');
+                if (map.current.getSource('monitor-target')) map.current.removeSource('monitor-target');
+                if (map.current.getLayer('monitor-diff')) map.current.removeLayer('monitor-diff');
+                if (map.current.getSource('monitor-diff')) map.current.removeSource('monitor-diff');
+
+                // Clear Geom Layers
+                if (map.current.getLayer('geom-layer')) map.current.removeLayer('geom-layer');
+                if (map.current.getSource('geom-layer')) map.current.removeSource('geom-layer');
+                if (map.current.getLayer('geom-border')) map.current.removeLayer('geom-border');
+                if (map.current.getSource('geom-border')) map.current.removeSource('geom-border');
+
+                // Add Geom Layer
+                map.current.addSource('geom-layer', {
+                    type: 'raster',
+                    tiles: [data.mapUrl],
+                    tileSize: 256
+                });
+                map.current.addLayer({
+                    id: 'geom-layer',
+                    type: 'raster',
+                    source: 'geom-layer'
+                });
+
+                // Add Border (Optional, tile based)
+                map.current.addSource('geom-border', {
+                    type: 'raster',
+                    tiles: [data.borderUrl],
+                    tileSize: 256
+                });
+                map.current.addLayer({
+                    id: 'geom-border',
+                    type: 'raster',
+                    source: 'geom-border'
+                });
+            }
+
+        } catch (e) {
+            setError("Geomorphology analysis failed: " + e.message);
         } finally {
             setLoading(false);
         }
@@ -1202,9 +1272,32 @@ export default function Geoportal() {
                     <span>GEE Explorer</span>
                     <button
                         className={`${styles.explorerBtn} ${isExplorerOpen ? styles.explorerBtnActive : ''}`}
-                        onClick={() => setIsExplorerOpen(!isExplorerOpen)}
+                        onClick={() => {
+                            setIsExplorerOpen(!isExplorerOpen);
+                            if (!isExplorerOpen) setActiveTab('search');
+                        }}
                     >
                         Explorador {isExplorerOpen ? '▲' : '▼'}
+                    </button>
+
+                    <button
+                        className={`${styles.explorerBtn} ${activeTab === 'monitor' ? styles.explorerBtnActive : ''}`}
+                        onClick={() => {
+                            setActiveTab('monitor');
+                            setIsExplorerOpen(true);
+                        }}
+                    >
+                        Monitor
+                    </button>
+
+                    <button
+                        className={`${styles.explorerBtn} ${activeTab === 'geomorphology' ? styles.explorerBtnActive : ''}`}
+                        onClick={() => {
+                            setActiveTab('geomorphology');
+                            setIsExplorerOpen(true);
+                        }}
+                    >
+                        Geomorphology
                     </button>
                 </div>
 
@@ -1244,12 +1337,6 @@ export default function Geoportal() {
                                 onClick={() => setActiveTab('draw')}
                             >
                                 Draw
-                            </button>
-                            <button
-                                className={`${styles.tabBtn} ${activeTab === 'monitor' ? styles.tabBtnActive : ''}`}
-                                onClick={() => setActiveTab('monitor')}
-                            >
-                                Monitor
                             </button>
                         </div>
 
@@ -1544,6 +1631,67 @@ export default function Geoportal() {
                                                     style={{ display: 'block', marginTop: '5px', color: '#0070f3' }}
                                                 >
                                                     💾 Download KMZ
+                                                </a>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {error && <div className={styles.error} style={{ marginTop: '10px' }}>{error}</div>}
+                                </div>
+                            </>
+                        )}
+
+                        {/* GEOMORPHOLOGY TAB */}
+                        {activeTab === 'geomorphology' && (
+                            <>
+                                <div className={styles.title}>Geomorphology</div>
+                                <div className={styles.subtitle}>Terrain Analysis</div>
+
+                                <div className={styles.section}>
+                                    <label className={styles.label}>Select Comuna</label>
+                                    <select
+                                        className={styles.select}
+                                        value={selectedGeomComuna}
+                                        onChange={(e) => setSelectedGeomComuna(e.target.value)}
+                                    >
+                                        <option value="">-- Choose Comuna --</option>
+                                        {comunas.map(c => (
+                                            <option key={c} value={c}>{c}</option>
+                                        ))}
+                                    </select>
+
+                                    <label className={styles.label} style={{ marginTop: '10px' }}>Analysis Type</label>
+                                    <select
+                                        className={styles.select}
+                                        value={geomType}
+                                        onChange={(e) => setGeomType(e.target.value)}
+                                    >
+                                        <option value="Slope">Slope (Pendiente)</option>
+                                        <option value="Aspect">Aspect (Exposición)</option>
+                                        <option value="Hillshade">Hillshade (Sombra)</option>
+                                        <option value="DEM">DEM (Elevación)</option>
+                                    </select>
+
+                                    <button
+                                        className={styles.button}
+                                        onClick={handleGeomAnalysis}
+                                        disabled={loading || !selectedGeomComuna}
+                                        style={{ marginTop: '15px' }}
+                                    >
+                                        {loading ? "Generating..." : "Generate Analysis"}
+                                    </button>
+
+                                    {geomResult && (
+                                        <div style={{ marginTop: '15px', padding: '10px', background: '#f0f9ff', borderRadius: '4px' }}>
+                                            <div>✅ Analysis Complete</div>
+                                            {geomResult.downloadUrl && (
+                                                <a
+                                                    href={geomResult.downloadUrl}
+                                                    target="_blank"
+                                                    className={styles.link}
+                                                    style={{ display: 'block', marginTop: '5px', color: '#0070f3' }}
+                                                >
+                                                    💾 Download GeoTIFF
                                                 </a>
                                             )}
                                         </div>
