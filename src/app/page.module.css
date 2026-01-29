@@ -291,145 +291,156 @@
   width: 90%;
   /* Center with margins */
   max-width: 1200px;
-  height: 140px;
+  height: 100px;
+  /* Reduced height */
 
   /* Glassmorphism */
-  background: rgba(20, 20, 20, 0.6);
-  /* Darker backdrop for contrast */
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(20, 20, 20, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 
-  border-radius: 20px;
+  border-radius: 50px;
+  /* More rounded like a capsule */
   z-index: 1000;
-  /* High z-index */
 
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 10px 0;
+  padding: 0 20px;
   pointer-events: auto;
-  /* Active */
+}
+
+.timelineCloseBtn {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  font-size: 16px;
+  transition: color 0.2s;
+  z-index: 10;
+}
+
+.timelineCloseBtn:hover {
+  color: white;
 }
 
 .timelineScroll {
   display: flex;
   align-items: center;
   overflow-x: auto;
-  padding: 0 40px;
+  padding: 0 20px;
   height: 100%;
-  gap: 30px;
-  /* Explicit gap between items */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  gap: 0;
+  scrollbar-width: none;
+  /* Hide scrollbar for cleaner look */
+  position: relative;
 }
 
-/* Custom Scrollbar */
 .timelineScroll::-webkit-scrollbar {
-  height: 6px;
+  display: none;
 }
 
-.timelineScroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.timelineScroll::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-radius: 10px;
+/* Continuous Line Background */
+.timelineScroll::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 20px;
+  right: 20px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-50%);
+  z-index: 0;
+  width: max-content;
+  /* Ensure it spans all items */
+  min-width: calc(100% - 40px);
 }
 
 .timelineItem {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   cursor: pointer;
   position: relative;
-  min-width: 50px;
+  min-width: 40px;
+  /* Closer together */
+  height: 100%;
   flex-shrink: 0;
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.2s;
 }
 
-.timelineItem:hover {
-  transform: translateY(-5px);
-}
-
-/* Connector Line - Subtle */
+/* Remove per-item connectors */
 .timelineItem::before {
-  content: '';
-  position: absolute;
-  top: 18px;
-  /* Align with middle of dot approx */
-  left: 50%;
-  width: calc(100% + 30px);
-  /* Span the gap */
-  height: 2px;
-  background: linear-gradient(to right, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1));
-  z-index: 0;
-  transform: translateY(0);
-}
-
-.timelineItem:last-child::before {
   display: none;
 }
 
-/* Dot Style */
+/* Dot Style - Simple Dots on the line */
 .timelineDot {
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-  margin-bottom: 8px;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  background-color: rgba(255, 255, 255, 0.5);
+  /* Default gray/white */
+  border: 2px solid transparent;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   z-index: 2;
   position: relative;
+  /* On top of line */
 }
 
 /* Hover/Active States */
 .timelineItem:hover .timelineDot {
-  transform: scale(1.4);
+  transform: scale(1.5);
   background-color: #fff !important;
-  /* Highlight on hover */
-  border-color: #0070f3;
-  box-shadow: 0 0 15px rgba(0, 112, 243, 0.6);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
 }
 
 .timelineDotActive {
-  transform: scale(1.6);
-  border-color: #0070f3;
+  transform: scale(1.8);
   background-color: #0070f3 !important;
-  box-shadow: 0 0 0 4px rgba(0, 112, 243, 0.3), 0 0 20px rgba(0, 112, 243, 0.6);
+  box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.3);
 }
 
 .timelineDotLeft {
-  transform: scale(1.5);
-  border-color: #e91e63;
-  box-shadow: 0 0 0 4px rgba(233, 30, 99, 0.3);
+  transform: scale(1.6);
+  background-color: #e91e63 !important;
 }
 
 .timelineDotRight {
-  transform: scale(1.5);
-  border-color: #00bcd4;
-  box-shadow: 0 0 0 4px rgba(0, 188, 212, 0.3);
+  transform: scale(1.6);
+  background-color: #00bcd4 !important;
 }
 
-/* Date Label - Modern */
-.timelineDate {
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.8);
-  font-family: 'Inter', sans-serif;
-  /* Ensure modern font */
-  font-weight: 500;
-  margin-top: 6px;
-  letter-spacing: 0.5px;
-  transition: color 0.2s;
-}
-
-.timelineItem:hover .timelineDate,
-.timelineDotActive+.timelineDate {
+/* Date Pill - Only on Hover/Active */
+.timelineDatePill {
+  position: absolute;
+  bottom: 15px;
+  /* Below the dot */
+  background: rgba(0, 0, 0, 0.8);
   color: white;
-  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(5px);
+  transition: all 0.2s ease;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+}
+
+.timelineItem:hover .timelineDatePill,
+.timelineDotActive+.timelineDatePill {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* Popover - Modern Glass */
@@ -452,7 +463,6 @@
   opacity: 0;
   transition: all 0.2s ease;
   pointer-events: none;
-  /* Prevent flickering */
 }
 
 /* Show on hover with animation */

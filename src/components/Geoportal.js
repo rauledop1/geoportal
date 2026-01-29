@@ -37,6 +37,7 @@ export default function Geoportal() {
     const [isExplorerOpen, setIsExplorerOpen] = useState(false);
     const [isCompareMode, setIsCompareMode] = useState(false);
     const [activeTab, setActiveTab] = useState('search'); // search, upload, draw, monitor
+    const [showTimeline, setShowTimeline] = useState(true);
 
     // Monitor State
     const [comunas, setComunas] = useState([]);
@@ -1905,9 +1906,54 @@ export default function Geoportal() {
                         </>
                     )}
 
+                    {/* Show/Hide Timeline Button - Centered Bottom */}
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '10px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 1001,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        pointerEvents: 'auto'
+                    }}>
+                        {/* Only show if images exist */}
+                        {groupedImages.length > 0 && !showTimeline && (
+                            <button
+                                onClick={() => setShowTimeline(true)}
+                                style={{
+                                    background: 'white',
+                                    color: '#333',
+                                    border: 'none',
+                                    borderRadius: '50%',
+                                    width: '40px',
+                                    height: '40px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                    cursor: 'pointer',
+                                    fontSize: '18px'
+                                }}
+                                title="Show Timeline"
+                            >
+                                ↺
+                            </button>
+                        )}
+                    </div>
+
                     {/* Timeline Results - Fixed Bottom */}
-                    {groupedImages.length > 0 && (
+                    {groupedImages.length > 0 && showTimeline && (
                         <div className={styles.timelineContainer}>
+                            <button
+                                className={styles.timelineCloseBtn}
+                                onClick={() => setShowTimeline(false)}
+                                title="Hide Timeline"
+                            >
+                                ✕
+                            </button>
+
                             <div className={styles.timelineScroll}>
                                 {groupedImages.map((img) => (
                                     <div key={img.id} className={styles.timelineItem}>
@@ -1940,15 +1986,16 @@ export default function Geoportal() {
 
                                         <div
                                             className={`
-                       ${styles.timelineDot} 
-                       ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
-                       ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
-                       ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
-                     `}
+                        ${styles.timelineDot} 
+                        ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
+                        ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
+                        ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
+                        `}
                                             style={{ backgroundColor: getDotColor(img.cloud) }}
                                         ></div>
 
-                                        <div className={styles.timelineDate}>{img.date}</div>
+                                        {/* Simplified: Date "Pill" only appears on hover/active via CSS */}
+                                        <div className={styles.timelineDatePill}>{img.date}</div>
                                     </div>
                                 ))}
                             </div>
