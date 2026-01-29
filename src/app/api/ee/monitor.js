@@ -170,9 +170,12 @@ export async function handleMonitorAnalysis(body) {
         });
     });
 
+    const boundsInfo = await evaluate(region.bounds());
+
     return NextResponse.json({
         targetMap: urlTarget,
         diffMap: urlDiff,
-        downloadUrl
+        downloadUrl,
+        bounds: boundsInfo // GeoJSON Geometry for Zoom
     }, { status: 200 });
 }

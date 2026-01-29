@@ -122,6 +122,21 @@ export default function Geoportal() {
             // Or just single map for Monitor?
             // Let's force Single Mode for now or respect current mode.
 
+            if (data.bounds) {
+                // Bounds from EE are GeoJSON Polygon.
+                // We need to find the extent (bbox) for fitBounds.
+                // Quick bbox from polygon coordinates.
+                const coords = data.bounds.coordinates[0]; // Ring 0
+                const lngs = coords.map(c => c[0]);
+                const lats = coords.map(c => c[1]);
+                const minLng = Math.min(...lngs);
+                const maxLng = Math.max(...lngs);
+                const minLat = Math.min(...lats);
+                const maxLat = Math.max(...lats);
+
+                map.current.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 20 });
+            }
+
             setAnalysisResult(data);
 
             if (map.current) {
@@ -219,6 +234,18 @@ export default function Geoportal() {
                     type: 'raster',
                     source: 'geom-border'
                 });
+
+                if (data.bounds) {
+                    const coords = data.bounds.coordinates[0];
+                    const lngs = coords.map(c => c[0]);
+                    const lats = coords.map(c => c[1]);
+                    const minLng = Math.min(...lngs);
+                    const maxLng = Math.max(...lngs);
+                    const minLat = Math.min(...lats);
+                    const maxLat = Math.max(...lats);
+
+                    map.current.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 20 });
+                }
             }
 
         } catch (e) {

@@ -2,6 +2,14 @@ import ee from "@google/earthengine";
 import { NextResponse } from "next/server";
 
 // Helper functions (reused)
+function evaluate(obj) {
+    return new Promise((resolve, reject) =>
+        obj.evaluate((result, error) =>
+            error ? reject(new Error(error)) : resolve(result)
+        )
+    );
+}
+
 function getMapId(image, vis) {
     return new Promise((resolve, reject) => {
         image.getMapId(vis, (obj, error) =>
@@ -82,9 +90,12 @@ export async function handleGeomorphologyAnalysis(body) {
     const borderImage = comunaFeature.style(borderStyle);
     const { urlFormat: urlBorder } = await getMapId(borderImage, {});
 
+    const boundsInfo = await evaluate(region.bounds());
+
     return NextResponse.json({
         mapUrl: urlFormat,
         borderUrl: urlBorder,
-        downloadUrl
+        downloadUrl,
+        bounds: boundsInfo // GeoJSON Geometry for Zoom
     }, { status: 200 });
 }
