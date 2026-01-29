@@ -52,9 +52,6 @@ export default function Geoportal() {
     const [geomType, setGeomType] = useState('Slope'); // Slope, Aspect, Hillshade, DEM
     const [geomResult, setGeomResult] = useState(null);
 
-    // Super Resolution State
-    const [superResResult, setSuperResResult] = useState(null);
-    const [showEnhanced, setShowEnhanced] = useState(true);
 
     // Initial Load of Comunas (Shared)
     useEffect(() => {
@@ -271,105 +268,6 @@ export default function Geoportal() {
         }
     };
 
-    const handleEnhanceScene = async (img) => {
-        setLoading(true);
-        setError(null);
-        setSuperResResult(null);
-
-        try {
-            // We pass "Santiago" as a fallback Comuna because the backend currently requires logic 
-            // to find a region from a Comuna name if 'region' isn't explicitly passed.
-            // However, with 'imageId', distinct logic in the backend should ideally handle it.
-            // But just in case the backend relies on variable `comunaFeature` for clipping:
-            // The backend update I did *checks* for imageId and instantiates it.
-            // But let's look at the backend code again mentally:
-            // "const comunaFeature = ee.FeatureCollection...filter...; const region = comunaFeature.geometry();"
-            // This runs UNCONDITIONALLY at the top of handleSuperResolution.
-            // So we MUST pass a valid Comuna name or it crashes/filters empty.
-            // The default `comunas` list has real names. "Santiago" is likely valid if in the list.
-            // To be safe, we will pass "Santiago" BUT we should really fix the backend to be optional.
-            // Given I am in frontend fix mode, I will pass "Santiago" as a safe dummy 
-            // to satisfy the backend's initial geometry resolution, even if we don't use it for the image.
-
-            const body = {
-                action: "super-res",
-                imageId: img.id,
-                comuna: "Santiago"
-            };
-
-            const response = await fetch("/api/ee", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.message || data.error);
-
-            setSuperResResult(data);
-            setShowEnhanced(true); // Default to enhanced
-
-            if (map.current) {
-                // Remove layers if exist
-                if (map.current.getLayer("super-res-layer")) map.current.removeLayer("super-res-layer");
-                if (map.current.getSource("super-res-source")) map.current.removeSource("super-res-source");
-
-                // Add Enhanced
-                map.current.addSource("super-res-source", {
-                    type: "raster",
-                    tiles: [data.enhancedMap],
-                    tileSize: 256,
-                });
-                map.current.addLayer({
-                    id: "super-res-layer",
-                    type: "raster",
-                    source: "super-res-source",
-                    paint: { "raster-opacity": 1.0 },
-                });
-
-                // Zoom
-                if (data.bounds) {
-                    const coords = data.bounds.coordinates[0];
-                    const lngs = coords.map(c => c[0]);
-                    const lats = coords.map(c => c[1]);
-                    const minLng = Math.min(...lngs);
-                    const maxLng = Math.max(...lngs);
-                    const minLat = Math.min(...lats);
-                    const maxLat = Math.max(...lats);
-
-                    map.current.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 50 });
-                }
-            }
-
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const toggleSuperResLayer = (isEnhanced) => {
-        setShowEnhanced(isEnhanced);
-        if (!map.current || !superResResult) return;
-
-        const tileUrl = isEnhanced ? superResResult.enhancedMap : superResResult.originalMap;
-
-        if (map.current.getSource('super-res-source')) {
-            if (map.current.getLayer('super-res-layer')) map.current.removeLayer('super-res-layer');
-            map.current.removeSource('super-res-source');
-        }
-
-        map.current.addSource('super-res-source', {
-            type: 'raster',
-            tiles: [tileUrl],
-            tileSize: 256
-        });
-        map.current.addLayer({
-            id: 'super-res-layer',
-            type: 'raster',
-            source: 'super-res-source',
-            paint: { "raster-opacity": 1.0 },
-        });
-    };
 
     // Sentinel-2 State
     const today = new Date();
@@ -399,7 +297,7 @@ export default function Geoportal() {
     }, [drawMode]);
 
     const [cloudCover, setCloudCover] = useState(60);
-    const [sensor, setSensor] = useState("Sentinel-2");
+    const [sensor, setSensor] = useState("Sentinel Harmonized");
     const [visOption, setVisOption] = useState("True Color (RGB)");
     const [geometry, setGeometry] = useState(null);
     const [images, setImages] = useState([]);
@@ -1411,50 +1309,6 @@ export default function Geoportal() {
         <div className={styles.main}>
             {/* Navbar */}
             {/* Floating Super Res Controls */}
-            {superResResult && (
-                <div style={{
-                    position: 'absolute',
-                    bottom: '30px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    backgroundColor: 'white',
-                    padding: '10px 20px',
-                    borderRadius: '30px',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                    zIndex: 2000,
-                    display: 'flex',
-                    gap: '10px',
-                    alignItems: 'center'
-                }}>
-                    <span style={{ fontWeight: 'bold', marginRight: '5px' }}>✨ Super Res:</span>
-                    <button
-                        className={styles.pillsBtn}
-                        style={{ backgroundColor: !showEnhanced ? '#0070f3' : '#eee', color: !showEnhanced ? 'white' : 'black', border: 'none', padding: '5px 15px', borderRadius: '15px', cursor: 'pointer' }}
-                        onClick={() => toggleSuperResLayer(false)}
-                    >
-                        Original
-                    </button>
-                    <button
-                        className={styles.pillsBtn}
-                        style={{ backgroundColor: showEnhanced ? '#0070f3' : '#eee', color: showEnhanced ? 'white' : 'black', border: 'none', padding: '5px 15px', borderRadius: '15px', cursor: 'pointer' }}
-                        onClick={() => toggleSuperResLayer(true)}
-                    >
-                        Enhanced
-                    </button>
-                    <button
-                        style={{ marginLeft: '10px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}
-                        onClick={() => {
-                            setSuperResResult(null);
-                            if (map.current && map.current.getSource("super-res-source")) {
-                                map.current.removeLayer("super-res-layer");
-                                map.current.removeSource("super-res-source");
-                            }
-                        }}
-                    >
-                        ✕
-                    </button>
-                </div>
-            )}
 
             <nav className={styles.navbar}>
                 <div className={styles.brand}>
@@ -1562,9 +1416,8 @@ export default function Geoportal() {
                                             value={sensor}
                                             onChange={(e) => setSensor(e.target.value)}
                                         >
-                                            <option value="Sentinel-2">Sentinel-2 Level-2A</option>
-                                            <option value="Sentinel-2 Harmonized">Sentinel-2 Harmonized</option>
-                                            <option value="Landsat 9">Landsat 9 Level-2</option>
+                                            <option value="Landsat (Pan-sharpened)">Landsat (Pan-sharpened)</option>
+                                            <option value="Sentinel Harmonized">Sentinel Harmonized</option>
                                         </select>
 
                                         <label className={styles.label}>Visualization</label>
@@ -1968,13 +1821,6 @@ export default function Geoportal() {
                                             {!isCompareMode ? (
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                                                     <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'single')}>Visualize</button>
-                                                    <button
-                                                        className={styles.popoverBtn}
-                                                        style={{ background: 'linear-gradient(45deg, #FFD700, #FFA500)', color: 'black', fontWeight: 'bold' }}
-                                                        onClick={() => handleEnhanceScene(img)}
-                                                    >
-                                                        ✨ Enhance
-                                                    </button>
                                                 </div>
                                             ) : (
                                                 <div className={styles.popoverRow}>
