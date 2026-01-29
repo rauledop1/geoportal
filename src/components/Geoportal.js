@@ -31,6 +31,7 @@ export default function Geoportal() {
     const compare = useRef(null);
     const marker = useRef(null);
     const draw = useRef(null);
+    const viewState = useRef({ center: [-71.5, -33.5], zoom: 8 });
 
     // UI State
     const [isExplorerOpen, setIsExplorerOpen] = useState(false);
@@ -360,8 +361,9 @@ export default function Geoportal() {
         draw.current = null; // Prevent stale access to draw control
 
         const mapStyle = "https://demotiles.maplibre.org/style.json";
-        const initialCenter = geometry ? geometry.coordinates : [-71.5, -33.5];
-        const initialZoom = 8;
+        // Use viewState if available to persist view across mode switches
+        const initialCenter = viewState.current.center;
+        const initialZoom = viewState.current.zoom;
 
         if (isCompareMode) {
             // Use setTimeout to allow DOM to settle
@@ -442,6 +444,13 @@ export default function Geoportal() {
                             }
                             setIsExplorerOpen(true);
                         });
+
+                        // Sync viewState on move
+                        mapLeft.current.on('move', () => {
+                            const center = mapLeft.current.getCenter();
+                            const zoom = mapLeft.current.getZoom();
+                            viewState.current = { center: [center.lng, center.lat], zoom };
+                        });
                     }
                 } catch (err) {
                     console.error("Critical Swipe Mode Initialization Error:", err);
@@ -518,6 +527,13 @@ export default function Geoportal() {
                     setGeometry(point);
                     setIsExplorerOpen(true);
                 }
+            });
+
+            // Sync viewState on move
+            map.current.on('move', () => {
+                const center = map.current.getCenter();
+                const zoom = map.current.getZoom();
+                viewState.current = { center: [center.lng, center.lat], zoom };
             });
         }
 
