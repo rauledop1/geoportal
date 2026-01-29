@@ -1594,17 +1594,19 @@ export default function Geoportal() {
                                 </div>
                             </div>
                         )}
-                        {/* Map Container - Handles both Single and Compare modes */}
-                        <div className={styles.mapContainer} ref={mapContainer}>
-                            {isCompareMode && (
-                                <>
-                                    <div ref={leftMapContainer} className={styles.mapLeft}></div>
-                                    <div ref={rightMapContainer} className={styles.mapRight}></div>
-                                </>
-                            )}
-                        </div>
                     </div>
                 </div>
+
+                {/* Map Container - Handles both Single and Compare modes */}
+                <div className={styles.mapContainer} ref={mapContainer}>
+                    {isCompareMode && (
+                        <>
+                            <div ref={leftMapContainer} className={styles.mapLeft}></div>
+                            <div ref={rightMapContainer} className={styles.mapRight}></div>
+                        </>
+                    )}
+                </div>
             </div>
-            );
+        </div>
+    );
 }
