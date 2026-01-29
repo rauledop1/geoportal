@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getSensorConfig } from "./sensors";
 import { handleMonitorSearch, handleMonitorAnalysis, handleGetComunas } from "./monitor";
 import { handleGeomorphologyAnalysis } from "./geomorphology";
+import { handleSuperResolution } from "./super_resolution";
 
 export async function POST(req) {
   try {
@@ -79,6 +80,14 @@ export async function POST(req) {
 
     if (action === "geom-analysis") {
       return handleGeomorphologyAnalysis(body);
+    }
+
+    if (action === "geom-analysis") {
+      return handleGeomorphologyAnalysis(body);
+    }
+
+    if (action === "super-res") {
+      return handleSuperResolution(body);
     }
 
     if (action === "getMap") {

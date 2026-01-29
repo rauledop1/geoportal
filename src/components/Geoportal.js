@@ -51,6 +51,11 @@ export default function Geoportal() {
     const [geomType, setGeomType] = useState('Slope'); // Slope, Aspect, Hillshade, DEM
     const [geomResult, setGeomResult] = useState(null);
 
+    // Super Resolution State
+    const [selectedSuperResComuna, setSelectedSuperResComuna] = useState('');
+    const [superResResult, setSuperResResult] = useState(null);
+    const [showEnhanced, setShowEnhanced] = useState(true);
+
     // Initial Load of Comunas (Shared)
     useEffect(() => {
         fetch("/api/ee", {
@@ -246,6 +251,17 @@ export default function Geoportal() {
 
                     map.current.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 20 });
                 }
+                if (data.bounds) {
+                    const coords = data.bounds.coordinates[0];
+                    const lngs = coords.map(c => c[0]);
+                    const lats = coords.map(c => c[1]);
+                    const minLng = Math.min(...lngs);
+                    const maxLng = Math.max(...lngs);
+                    const minLat = Math.min(...lats);
+                    const maxLat = Math.max(...lats);
+
+                    map.current.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 20 });
+                }
             }
 
         } catch (e) {
@@ -253,6 +269,92 @@ export default function Geoportal() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleSuperRes = async () => {
+        if (!selectedSuperResComuna) return;
+        setLoading(true);
+        setError(null);
+        setSuperResResult(null);
+
+        try {
+            const res = await fetch("/api/ee", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "super-res",
+                    comuna: selectedSuperResComuna
+                })
+            });
+            const data = await res.json();
+
+            if (data.error) throw new Error(data.error);
+
+            setSuperResResult(data);
+            setShowEnhanced(true); // Default to enhanced
+
+            if (map.current) {
+                // Clear previous layers
+                const layers = ['monitor-target', 'monitor-diff', 'geom-layer', 'geom-border', 'sr-layer'];
+                layers.forEach(id => {
+                    if (map.current.getLayer(id)) map.current.removeLayer(id);
+                    if (map.current.getSource(id)) map.current.removeSource(id);
+                });
+
+                // Add SR Layer (Enhanced by default)
+                map.current.addSource('sr-layer', {
+                    type: 'raster',
+                    tiles: [data.enhancedMap],
+                    tileSize: 256
+                });
+                map.current.addLayer({
+                    id: 'sr-layer',
+                    type: 'raster',
+                    source: 'sr-layer'
+                });
+
+                if (data.bounds) {
+                    const coords = data.bounds.coordinates[0];
+                    const lngs = coords.map(c => c[0]);
+                    const lats = coords.map(c => c[1]);
+                    const minLng = Math.min(...lngs);
+                    const maxLng = Math.max(...lngs);
+                    const minLat = Math.min(...lats);
+                    const maxLat = Math.max(...lats);
+
+                    map.current.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 20 });
+                }
+            }
+        } catch (e) {
+            setError("Super Resolution failed: " + e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const toggleSuperResLayer = (isEnhanced) => {
+        setShowEnhanced(isEnhanced);
+        if (!map.current || !superResResult) return;
+
+        const tileUrl = isEnhanced ? superResResult.enhancedMap : superResResult.originalMap;
+
+        if (map.current.getSource('sr-layer')) {
+            // Mapbox GL JS doesn't support changing tiles easily without removing source?
+            // Actually we can setTiles if using specific API, but removing/adding is safer.
+            if (map.current.getLayer('sr-layer')) map.current.removeLayer('sr-layer');
+            map.current.removeSource('sr-layer');
+        }
+
+        map.current.addSource('sr-layer', {
+            type: 'raster',
+            tiles: [tileUrl],
+            tileSize: 256
+        });
+        map.current.addLayer({
+            id: 'sr-layer',
+            type: 'raster',
+            source: 'sr-layer'
+        });
     };
 
     // Sentinel-2 State
@@ -1326,6 +1428,16 @@ export default function Geoportal() {
                     >
                         Geomorphology
                     </button>
+
+                    <button
+                        className={`${styles.explorerBtn} ${activeTab === 'super-res' ? styles.explorerBtnActive : ''}`}
+                        onClick={() => {
+                            setActiveTab('super-res');
+                            setIsExplorerOpen(true);
+                        }}
+                    >
+                        ✨ Super Res
+                    </button>
                 </div>
 
                 <form className={styles.searchContainer} onSubmit={handleLocationSearch}>
@@ -1721,6 +1833,63 @@ export default function Geoportal() {
                                                     💾 Download GeoTIFF
                                                 </a>
                                             )}
+                                        </div>
+                                    )}
+
+                                    {error && <div className={styles.error} style={{ marginTop: '10px' }}>{error}</div>}
+                                </div>
+                            </>
+                        )}
+
+                        {/* SUPER RESOLUTION TAB */}
+                        {activeTab === 'super-res' && (
+                            <>
+                                <div className={styles.title}>Super Resolution (Native)</div>
+                                <div className={styles.subtitle}>Enhance Imagery using Bicubic Sharpening</div>
+
+                                <div className={styles.section}>
+                                    <label className={styles.label}>Select Comuna</label>
+                                    <select
+                                        className={styles.select}
+                                        value={selectedSuperResComuna}
+                                        onChange={(e) => setSelectedSuperResComuna(e.target.value)}
+                                    >
+                                        <option value="">-- Choose Comuna --</option>
+                                        {comunas.map(c => (
+                                            <option key={c} value={c}>{c}</option>
+                                        ))}
+                                    </select>
+
+                                    <button
+                                        className={styles.button}
+                                        onClick={handleSuperRes}
+                                        disabled={loading || !selectedSuperResComuna}
+                                        style={{ marginTop: '15px' }}
+                                    >
+                                        {loading ? "Processing..." : "✨ Enhance Imagery"}
+                                    </button>
+
+                                    {superResResult && (
+                                        <div style={{ marginTop: '15px', padding: '10px', background: '#f0f9ff', borderRadius: '4px' }}>
+                                            <div style={{ fontWeight: 'bold' }}>✅ Enhancement Complete</div>
+                                            <div style={{ fontSize: '12px', marginBottom: '10px' }}>Image Date: {superResResult.date}</div>
+
+                                            <div style={{ display: 'flex', gap: '10px' }}>
+                                                <button
+                                                    className={styles.pillsBtn}
+                                                    style={{ backgroundColor: !showEnhanced ? '#0070f3' : '#ccc', color: 'white' }}
+                                                    onClick={() => toggleSuperResLayer(false)}
+                                                >
+                                                    Original (10m)
+                                                </button>
+                                                <button
+                                                    className={styles.pillsBtn}
+                                                    style={{ backgroundColor: showEnhanced ? '#0070f3' : '#ccc', color: 'white' }}
+                                                    onClick={() => toggleSuperResLayer(true)}
+                                                >
+                                                    Enhanced (2.5m)
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
 
