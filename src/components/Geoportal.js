@@ -1594,7 +1594,6 @@ export default function Geoportal() {
                                 </div>
                             </div>
                         )}
-
                         {/* Map Container - Handles both Single and Compare modes */}
                         <div className={styles.mapContainer} ref={mapContainer}>
                             {isCompareMode && (
@@ -1606,5 +1605,6 @@ export default function Geoportal() {
                         </div>
                     </div>
                 </div>
-                );
+            </div>
+            );
 }
