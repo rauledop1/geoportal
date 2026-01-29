@@ -36,7 +36,127 @@ export default function Geoportal() {
     // UI State
     const [isExplorerOpen, setIsExplorerOpen] = useState(false);
     const [isCompareMode, setIsCompareMode] = useState(false);
-    const [activeTab, setActiveTab] = useState('search'); // search, upload, draw
+    const [activeTab, setActiveTab] = useState('search'); // search, upload, draw, monitor
+
+    // Monitor State
+    const [comunas, setComunas] = useState([]);
+    const [selectedComuna, setSelectedComuna] = useState('');
+    const [monitorData, setMonitorData] = useState([]);
+    const [baselineYear, setBaselineYear] = useState('');
+    const [analysisResult, setAnalysisResult] = useState(null);
+    const [selectedMonitorImage, setSelectedMonitorImage] = useState(null);
+
+    // Initial Load of Comunas
+    useEffect(() => {
+        fetch("/api/ee", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "get-comunas" })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.comunas) setComunas(data.comunas);
+            })
+            .catch(err => console.error("Error loading comunas", err));
+    }, []);
+
+    const handleMonitorSearch = async () => {
+        if (!selectedComuna) return;
+        setLoading(true);
+        setMonitorData([]);
+        setError(null);
+        try {
+            const res = await fetch("/api/ee", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "monitor-search",
+                    comuna: selectedComuna,
+                    startDate,
+                    endDate
+                })
+            });
+            const data = await res.json();
+            if (data.data) {
+                // Sort by date just in case
+                const sorted = data.data.sort((a, b) => new Date(a.date) - new Date(b.date));
+                setMonitorData(sorted);
+            }
+        } catch (e) {
+            setError("Monitor search failed: " + e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleMonitorAnalysis = async () => {
+        if (!selectedMonitorImage || !selectedComuna) return;
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch("/api/ee", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "monitor-analysis",
+                    comuna: selectedComuna,
+                    imageId: selectedMonitorImage.id,
+                    baselineYear: baselineYear || null
+                })
+            });
+            const data = await res.json();
+
+            // Add layers to Map
+            // Clear existing logic if needed?
+            // "When monitor-analysis returns, clear previous layers."
+            // We can reuse handleLayerAdd logic OR direct map manipulation.
+
+            // For simplicity, let's treat these as special layers.
+            // But we need to handle "Swipe Mode" awareness. 
+            // If in Swipe Mode, maybe show Target Left, Diff Right? 
+            // Or just single map for Monitor?
+            // Let's force Single Mode for now or respect current mode.
+
+            setAnalysisResult(data);
+
+            if (map.current) {
+                // Remove old layers
+                if (map.current.getLayer('monitor-target')) map.current.removeLayer('monitor-target');
+                if (map.current.getSource('monitor-target')) map.current.removeSource('monitor-target');
+                if (map.current.getLayer('monitor-diff')) map.current.removeLayer('monitor-diff');
+                if (map.current.getSource('monitor-diff')) map.current.removeSource('monitor-diff');
+
+                // Add Target (RGB)
+                map.current.addSource('monitor-target', {
+                    type: 'raster',
+                    tiles: [data.targetMap],
+                    tileSize: 256
+                });
+                map.current.addLayer({
+                    id: 'monitor-target',
+                    type: 'raster',
+                    source: 'monitor-target'
+                });
+
+                // Add Diff
+                map.current.addSource('monitor-diff', {
+                    type: 'raster',
+                    tiles: [data.diffMap],
+                    tileSize: 256
+                });
+                map.current.addLayer({
+                    id: 'monitor-diff',
+                    type: 'raster',
+                    source: 'monitor-diff'
+                });
+            }
+
+        } catch (e) {
+            setError("Analysis failed: " + e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Sentinel-2 State
     const today = new Date();
@@ -1125,6 +1245,12 @@ export default function Geoportal() {
                             >
                                 Draw
                             </button>
+                            <button
+                                className={`${styles.tabBtn} ${activeTab === 'monitor' ? styles.tabBtnActive : ''}`}
+                                onClick={() => setActiveTab('monitor')}
+                            >
+                                Monitor
+                            </button>
                         </div>
 
                         {/* SEARCH TAB */}
@@ -1306,60 +1432,179 @@ export default function Geoportal() {
                             </>
                         )}
 
-                    </div>
-                </div>
+                        {/* MONITOR TAB */}
+                        {activeTab === 'monitor' && (
+                            <>
+                                <div className={styles.title}>Monitor Territory</div>
+                                <div className={styles.subtitle}>Cloud stats & Change Detection</div>
 
-                {/* Timeline Results */}
-                {groupedImages.length > 0 && (
-                    <div className={styles.timelineContainer}>
-                        <div className={styles.timelineScroll}>
-                            {groupedImages.map((img) => (
-                                <div key={img.id} className={styles.timelineItem}>
-                                    <div className={styles.timelinePopover}>
-                                        {/* Thumbnail Removed */}
-                                        <div className={styles.popoverInfo}>
-                                            <b>{img.date}</b><br />
-                                            {Math.round(img.cloud)}% Clouds
-                                            {img.isGroup && <><br /><small>({img.count} items)</small></>}
-                                        </div>
+                                <div className={styles.section}>
+                                    <label className={styles.label}>Select Comuna</label>
+                                    <select
+                                        className={styles.select}
+                                        value={selectedComuna}
+                                        onChange={(e) => setSelectedComuna(e.target.value)}
+                                    >
+                                        <option value="">-- Choose Comuna --</option>
+                                        {comunas.map(c => (
+                                            <option key={c} value={c}>{c}</option>
+                                        ))}
+                                    </select>
 
-                                        {!isCompareMode ? (
-                                            <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'single')}>Visualize</button>
-                                        ) : (
-                                            <div className={styles.popoverRow}>
-                                                <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'left')}>Left</button>
-                                                <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'right')}>Right</button>
-                                            </div>
-                                        )}
+                                    <div style={{ marginTop: '10px' }}>
+                                        <label className={styles.label}>Date Range</label>
+                                        <input
+                                            type="date"
+                                            className={styles.input}
+                                            value={startDate}
+                                            onChange={(e) => setStartDate(e.target.value)}
+                                        />
+                                        <input
+                                            type="date"
+                                            className={styles.input}
+                                            value={endDate}
+                                            onChange={(e) => setEndDate(e.target.value)}
+                                        />
                                     </div>
 
-                                    <div
-                                        className={`
+                                    <button
+                                        className={styles.button}
+                                        onClick={handleMonitorSearch}
+                                        disabled={loading || !selectedComuna}
+                                        style={{ marginTop: '15px' }}
+                                    >
+                                        {loading ? "Searching..." : "Analyze Cloud Series"}
+                                    </button>
+
+                                    {/* Simple Chart / List */}
+                                    {monitorData.length > 0 && (
+                                        <div style={{ marginTop: '20px', maxHeight: '200px', overflowY: 'auto' }}>
+                                            <div className={styles.label}>Select Image for Analysis:</div>
+                                            {monitorData.map((d) => (
+                                                <div
+                                                    key={d.id}
+                                                    onClick={() => {
+                                                        setSelectedMonitorImage(d);
+                                                        setAnalysisResult(null); // Reset analysis
+                                                    }}
+                                                    style={{
+                                                        padding: '8px',
+                                                        border: selectedMonitorImage?.id === d.id ? '2px solid #0070f3' : '1px solid #ccc',
+                                                        borderRadius: '4px',
+                                                        marginBottom: '5px',
+                                                        cursor: 'pointer',
+                                                        background: '#fff',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        fontSize: '12px'
+                                                    }}
+                                                >
+                                                    <span>{d.date}</span>
+                                                    <span>☁ {Math.round(d.cloud)}%</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {selectedMonitorImage && (
+                                        <div style={{ marginTop: '20px', borderTop: '1px solid #ccc', paddingTop: '10px' }}>
+                                            <div className={styles.label}>Change Detection</div>
+                                            <div className={styles.instruction}>
+                                                Target: {selectedMonitorImage.date}
+                                            </div>
+
+                                            <label className={styles.label} style={{ marginTop: '10px' }}>Baseline Year (Optional)</label>
+                                            <input
+                                                type="number"
+                                                className={styles.input}
+                                                placeholder="e.g. 2024"
+                                                value={baselineYear}
+                                                onChange={(e) => setBaselineYear(e.target.value)}
+                                            />
+
+                                            <button
+                                                className={styles.button}
+                                                onClick={handleMonitorAnalysis}
+                                                disabled={loading}
+                                                style={{ marginTop: '10px', background: '#e00' }}
+                                            >
+                                                {loading ? "Processing..." : "Calculate Differences"}
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {analysisResult && (
+                                        <div style={{ marginTop: '15px', padding: '10px', background: '#f0f9ff', borderRadius: '4px' }}>
+                                            <div>✅ Analysis Complete</div>
+                                            {analysisResult.downloadUrl && (
+                                                <a
+                                                    href={analysisResult.downloadUrl}
+                                                    target="_blank"
+                                                    className={styles.link}
+                                                    style={{ display: 'block', marginTop: '5px', color: '#0070f3' }}
+                                                >
+                                                    💾 Download KMZ
+                                                </a>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {error && <div className={styles.error} style={{ marginTop: '10px' }}>{error}</div>}
+                                </div>
+                            </>
+                        )}
+
+                        {/* Timeline Results */}
+                        {groupedImages.length > 0 && (
+                            <div className={styles.timelineContainer}>
+                                <div className={styles.timelineScroll}>
+                                    {groupedImages.map((img) => (
+                                        <div key={img.id} className={styles.timelineItem}>
+                                            <div className={styles.timelinePopover}>
+                                                {/* Thumbnail Removed */}
+                                                <div className={styles.popoverInfo}>
+                                                    <b>{img.date}</b><br />
+                                                    {Math.round(img.cloud)}% Clouds
+                                                    {img.isGroup && <><br /><small>({img.count} items)</small></>}
+                                                </div>
+
+                                                {!isCompareMode ? (
+                                                    <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'single')}>Visualize</button>
+                                                ) : (
+                                                    <div className={styles.popoverRow}>
+                                                        <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'left')}>Left</button>
+                                                        <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'right')}>Right</button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div
+                                                className={`
                        ${styles.timelineDot} 
                        ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
                        ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
                        ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
                      `}
-                                        style={{ backgroundColor: getDotColor(img.cloud) }}
-                                    ></div>
+                                                style={{ backgroundColor: getDotColor(img.cloud) }}
+                                            ></div>
 
-                                    <div className={styles.timelineDate}>{img.date}</div>
+                                            <div className={styles.timelineDate}>{img.date}</div>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
+                            </div>
+                        )}
+
+                        {/* Map Container - Handles both Single and Compare modes */}
+                        <div className={styles.mapContainer} ref={mapContainer}>
+                            {isCompareMode && (
+                                <>
+                                    <div ref={leftMapContainer} className={styles.mapLeft}></div>
+                                    <div ref={rightMapContainer} className={styles.mapRight}></div>
+                                </>
+                            )}
                         </div>
                     </div>
-                )}
-
-                {/* Map Container - Handles both Single and Compare modes */}
-                <div className={styles.mapContainer} ref={mapContainer}>
-                    {isCompareMode && (
-                        <>
-                            <div ref={leftMapContainer} className={styles.mapLeft}></div>
-                            <div ref={rightMapContainer} className={styles.mapRight}></div>
-                        </>
-                    )}
                 </div>
-            </div>
-        </div>
-    );
+                );
 }
