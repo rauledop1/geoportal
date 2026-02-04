@@ -1822,23 +1822,22 @@ export default function Geoportal() {
 
                             <div className={styles.timelineScroll}>
                                 {groupedImages.map((img) => (
-                                    <div key={img.id} className={styles.timelineItem}>
+                                    <div
+                                        key={img.id}
+                                        className={styles.timelineItem}
+                                        onClick={() => !isCompareMode && handleTimelineClick(img, 'single')}
+                                    >
                                         <div className={styles.timelinePopover}>
-                                            {/* Thumbnail Removed */}
                                             <div className={styles.popoverInfo}>
                                                 <b>{img.date}</b><br />
                                                 {Math.round(img.cloud)}% Clouds
                                                 {img.isGroup && <><br /><small>({img.count} items)</small></>}
                                             </div>
 
-                                            {!isCompareMode ? (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                                    <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'single')}>Visualize</button>
-                                                </div>
-                                            ) : (
+                                            {isCompareMode && (
                                                 <div className={styles.popoverRow}>
-                                                    <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'left')}>Left</button>
-                                                    <button className={styles.popoverBtn} onClick={() => handleTimelineClick(img, 'right')}>Right</button>
+                                                    <button className={styles.popoverBtn} onClick={(e) => { e.stopPropagation(); handleTimelineClick(img, 'left'); }}>Left</button>
+                                                    <button className={styles.popoverBtn} onClick={(e) => { e.stopPropagation(); handleTimelineClick(img, 'right'); }}>Right</button>
                                                 </div>
                                             )}
                                         </div>
@@ -1853,7 +1852,6 @@ export default function Geoportal() {
                                             style={{ backgroundColor: getDotColor(img.cloud) }}
                                         ></div>
 
-                                        {/* Simplified: Date "Pill" only appears on hover/active via CSS */}
                                         <div className={styles.timelineDatePill}>{img.date}</div>
                                     </div>
                                 ))}

@@ -465,12 +465,17 @@
   pointer-events: none;
 }
 
-/* Show on hover with animation */
+/* Show on hover with animation - ONLY in compare mode or if needed */
 .timelineItem:hover .timelinePopover {
   display: flex;
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   pointer-events: auto;
+}
+
+/* If not in compare mode, we can hide popover or simplify it */
+:global(.no-compare) .timelinePopover {
+  display: none !important;
 }
 
 .popoverInfo {
