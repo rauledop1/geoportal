@@ -21,7 +21,7 @@ export async function POST(req) {
     let visParams = {};
     if (visOption === "False Color (Infrared)") {
       visParams = { bands: [bands.NIR, bands.RED, bands.GREEN], min: 0, max: 3000, gamma: 1.4 };
-      if (sensor === "Landsat 9") visParams.max = 30000;
+      if (sensor.includes("Landsat")) visParams.max = 30000;
     } else if (visOption === "NDVI") {
       // NDVI is computed, visParams are palette
       visParams = { min: 0, max: 1, palette: ['red', 'yellow', 'green'] };
@@ -31,7 +31,7 @@ export async function POST(req) {
     } else {
       // Default RGB
       visParams = { bands: [bands.RED, bands.GREEN, bands.BLUE], min: 0, max: 3000, gamma: 1.4 };
-      if (sensor === "Landsat 9") visParams.max = 30000;
+      if (sensor.includes("Landsat")) visParams.max = 30000;
     }
 
     if (action === "search") {

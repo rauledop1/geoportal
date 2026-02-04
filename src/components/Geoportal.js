@@ -1753,7 +1753,7 @@ export default function Geoportal() {
                                     <div
                                         key={img.id}
                                         className={styles.timelineItem}
-                                        onClick={() => !isCompareMode && handleTimelineClick(img, 'single')}
+                                        onClick={() => handleTimelineClick(img, isCompareMode ? 'right' : 'single')}
                                     >
                                         <div
                                             className={`
