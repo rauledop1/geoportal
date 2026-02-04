@@ -464,7 +464,7 @@ export default function Geoportal() {
 
                         for (const other of others) {
                             try {
-                                const diff = turf.difference(currentGeometry, other);
+                                const diff = turf.difference(turf.featureCollection([currentGeometry, other]));
                                 if (diff) {
                                     currentGeometry = diff;
                                     clipped = true;
@@ -516,7 +516,7 @@ export default function Geoportal() {
                     let cutPerformed = false;
 
                     targets.forEach(target => {
-                        const diff = turf.difference(target, cutterPoly);
+                        const diff = turf.difference(turf.featureCollection([target, cutterPoly]));
 
                         if (diff) {
                             idsToDelete.push(target.id);
