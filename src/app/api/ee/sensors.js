@@ -11,6 +11,9 @@ export const SENSORS = {
         bands: { RED: 'SR_B4', GREEN: 'SR_B3', BLUE: 'SR_B2', NIR: 'SR_B5', SWIR1: 'SR_B6' },
         cloudBand: "CLOUD_COVER",
         idPrefix: "LANDSAT/LC09/C02/T1_L2/"
+    },
+    "Combined (Landsat + Sentinel)": {
+        isCombined: true // Flag for special handling
     }
 };
 

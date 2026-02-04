@@ -35,6 +35,39 @@ export async function POST(req) {
     }
 
     if (action === "search") {
+      if (selectedSensor.isCombined) {
+        // Combined logic: Fetch both
+        const s2 = getSensorConfig("Sentinel Harmonized");
+        const l9 = getSensorConfig("Landsat (Pan-sharpened)");
+
+        const s2Col = ee.ImageCollection(s2.collection)
+          .filterDate(startDate, endDate)
+          .filterBounds(ee.Geometry(geometry))
+          .filter(ee.Filter.lte(s2.cloudBand, cloudCover))
+          .map(img => ee.Feature(null, {
+            id: ee.String(s2.idPrefix).cat(img.get("system:index")),
+            date: img.date().format("YYYY-MM-dd"),
+            cloud: img.get(s2.cloudBand),
+            time: img.get("system:time_start")
+          }));
+
+        const l9Col = ee.ImageCollection(l9.collection)
+          .filterDate(startDate, endDate)
+          .filterBounds(ee.Geometry(geometry))
+          .filter(ee.Filter.lte(l9.cloudBand, cloudCover))
+          .map(img => ee.Feature(null, {
+            id: ee.String(l9.idPrefix).cat(img.get("system:index")),
+            date: img.date().format("YYYY-MM-dd"),
+            cloud: img.get(l9.cloudBand),
+            time: img.get("system:time_start")
+          }));
+
+        const combined = s2Col.merge(l9Col).sort("time");
+        const result = await evaluate(combined.limit(100).toList(100));
+        const features = result.map((f) => f.properties);
+        return NextResponse.json({ images: features }, { status: 200 });
+      }
+
       const col = ee.ImageCollection(selectedSensor.collection)
         .filterDate(startDate, endDate)
         .filterBounds(ee.Geometry(geometry))
@@ -54,12 +87,7 @@ export async function POST(req) {
       const result = await evaluate(featureCollection.toList(50));
       const features = result.map((f) => f.properties);
 
-      const featuresWithThumbnails = await Promise.all(features.map(async (feat) => {
-        // We no longer generate thumbnails
-        return { ...feat, thumbnail: null };
-      }));
-
-      return NextResponse.json({ images: featuresWithThumbnails }, { status: 200 });
+      return NextResponse.json({ images: features }, { status: 200 });
     }
 
     // --- Monitor Actions ---

@@ -1357,6 +1357,7 @@ export default function Geoportal() {
                                             value={sensor}
                                             onChange={(e) => setSensor(e.target.value)}
                                         >
+                                            <option value="Combined (Landsat + Sentinel)">Combined (Landsat + Sentinel)</option>
                                             <option value="Landsat (Pan-sharpened)">Landsat (Pan-sharpened)</option>
                                             <option value="Sentinel Harmonized">Sentinel Harmonized</option>
                                         </select>
@@ -1771,9 +1772,12 @@ export default function Geoportal() {
                                                 style={{ backgroundColor: getDotColor(img.cloud) }}
                                             ></div>
 
-                                            {index % labelStep === 0 && (
-                                                <div className={styles.timelineDatePill}>{img.date}</div>
-                                            )}
+                                            <div className={`
+                                                ${styles.timelineDatePill}
+                                                ${index % labelStep === 0 ? styles.visibleLabel : ''}
+                                            `}>
+                                                {img.date}
+                                            </div>
                                         </div>
                                     ));
                                 })()}
