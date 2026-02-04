@@ -1749,25 +1749,34 @@ export default function Geoportal() {
                             </button>
 
                             <div className={styles.timelineScroll}>
-                                {groupedImages.map((img) => (
-                                    <div
-                                        key={img.id}
-                                        className={styles.timelineItem}
-                                        onClick={() => handleTimelineClick(img, isCompareMode ? 'right' : 'single')}
-                                    >
+                                {(() => {
+                                    const availableWidth = windowWidth * 0.8;
+                                    const minLabelWidth = 80;
+                                    const maxLabels = Math.floor(availableWidth / minLabelWidth);
+                                    const labelStep = Math.max(1, Math.ceil(groupedImages.length / maxLabels));
+
+                                    return groupedImages.map((img, index) => (
                                         <div
-                                            className={`
+                                            key={img.id}
+                                            className={styles.timelineItem}
+                                            onClick={() => handleTimelineClick(img, isCompareMode ? 'right' : 'single')}
+                                        >
+                                            <div
+                                                className={`
                         ${styles.timelineDot} 
                         ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
                         ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
                         ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
                         `}
-                                            style={{ backgroundColor: getDotColor(img.cloud) }}
-                                        ></div>
+                                                style={{ backgroundColor: getDotColor(img.cloud) }}
+                                            ></div>
 
-                                        <div className={styles.timelineDatePill}>{img.date}</div>
-                                    </div>
-                                ))}
+                                            {index % labelStep === 0 && (
+                                                <div className={styles.timelineDatePill}>{img.date}</div>
+                                            )}
+                                        </div>
+                                    ));
+                                })()}
                             </div>
                         </div>
                     )}

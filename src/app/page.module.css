@@ -333,13 +333,15 @@
 .timelineScroll {
   display: flex;
   align-items: center;
-  overflow-x: auto;
-  padding: 0 20px;
+  justify-content: space-between;
+  overflow-x: hidden;
+  /* Prevent scrolling, force fit */
+  padding: 0 40px;
+  /* Space for labels to breathe at edges */
   height: 100%;
   gap: 0;
-  scrollbar-width: none;
-  /* Hide scrollbar for cleaner look */
   position: relative;
+  width: 100%;
 }
 
 .timelineScroll::-webkit-scrollbar {
@@ -364,15 +366,17 @@
 
 .timelineItem {
   display: flex;
+  flex: 1;
+  /* Grow and shrink to fit */
   flex-direction: column;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   position: relative;
-  min-width: 60px;
-  /* Ensure space for dates */
+  min-width: 5px;
+  /* Tiny min-width to allow extreme density */
   height: 100%;
-  flex-shrink: 0;
+  flex-shrink: 1;
   transition: transform 0.2s;
 }
 
