@@ -1289,6 +1289,29 @@ export default function Geoportal() {
         } else {
             handleLayerAdd(imgId, 'single');
         }
+
+        // Center item on click
+        if (timelineScrollRef.current && groupedImages.length > 1) {
+            const container = timelineScrollRef.current;
+            const start = new Date(groupedImages[0].date).getTime();
+            const end = new Date(groupedImages[groupedImages.length - 1].date).getTime();
+            const current = new Date(item.date).getTime();
+            const percent = ((current - start) / (end - start));
+
+            // Wait for potential re-renders or just use current DOM state
+            const track = container.children[0]; // The timelineTrack
+            if (track) {
+                const trackWidth = track.scrollWidth;
+                const pointX = percent * trackWidth;
+                const containerWidth = container.offsetWidth;
+                const targetScrollLeft = pointX - (containerWidth / 2);
+
+                container.scrollTo({
+                    left: targetScrollLeft,
+                    behavior: 'smooth'
+                });
+            }
+        }
     };
 
     {/* Draw Mode Handlers */ }
@@ -1839,30 +1862,46 @@ export default function Geoportal() {
                                     className={styles.timelineTrack}
                                     style={timelineTrackStyle}
                                 >
-                                    {groupedImages.map((img, index) => (
-                                        <div
-                                            key={img.id}
-                                            className={styles.timelineItem}
-                                            onClick={() => handleTimelineClick(img, isCompareMode ? 'right' : 'single')}
-                                        >
+                                    {groupedImages.map((img, index) => {
+                                        let leftPos = "50%";
+                                        if (groupedImages.length > 1) {
+                                            try {
+                                                const start = new Date(groupedImages[0].date).getTime();
+                                                const end = new Date(groupedImages[groupedImages.length - 1].date).getTime();
+                                                const current = new Date(img.date).getTime();
+                                                const percent = ((current - start) / (end - start)) * 100;
+                                                leftPos = `${percent}%`;
+                                            } catch (e) {
+                                                console.error("Error calculating item position:", e);
+                                            }
+                                        }
+
+                                        return (
                                             <div
-                                                className={`
+                                                key={img.id}
+                                                className={styles.timelineItem}
+                                                style={{ left: leftPos }}
+                                                onClick={() => handleTimelineClick(img, isCompareMode ? 'right' : 'single')}
+                                            >
+                                                <div
+                                                    className={`
                                                     ${styles.timelineDot} 
                                                     ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
                                                     ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
                                                     ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
                                                 `}
-                                                style={{ backgroundColor: getDotColor(img.cloud) }}
-                                            ></div>
+                                                    style={{ backgroundColor: getDotColor(img.cloud) }}
+                                                ></div>
 
-                                            <div className={`
-                                                ${styles.timelineDatePill}
-                                                ${index % timelineLabelStep === 0 ? styles.visibleLabel : ''}
-                                            `}>
-                                                {img.date}
+                                                <div className={`
+                                                    ${styles.timelineDatePill}
+                                                    ${index % timelineLabelStep === 0 ? styles.visibleLabel : ''}
+                                                `}>
+                                                    {img.date}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
