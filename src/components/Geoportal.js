@@ -1750,37 +1750,39 @@ export default function Geoportal() {
                             </button>
 
                             <div className={`${styles.timelineScroll} ${groupedImages.length * 15 > windowWidth ? styles.timelineScrollOverflow : ''}`}>
-                                {(() => {
-                                    const availableWidth = windowWidth * 0.8;
-                                    const minLabelWidth = 80;
-                                    const maxLabels = Math.floor(availableWidth / minLabelWidth);
-                                    const labelStep = Math.max(1, Math.ceil(groupedImages.length / maxLabels));
+                                <div className={styles.timelineTrack}>
+                                    {(() => {
+                                        const availableWidth = windowWidth * 0.8;
+                                        const minLabelWidth = 80;
+                                        const maxLabels = Math.floor(availableWidth / minLabelWidth);
+                                        const labelStep = Math.max(1, Math.ceil(groupedImages.length / maxLabels));
 
-                                    return groupedImages.map((img, index) => (
-                                        <div
-                                            key={img.id}
-                                            className={styles.timelineItem}
-                                            onClick={() => handleTimelineClick(img, isCompareMode ? 'right' : 'single')}
-                                        >
+                                        return groupedImages.map((img, index) => (
                                             <div
-                                                className={`
-                        ${styles.timelineDot} 
-                        ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
-                        ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
-                        ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
-                        `}
-                                                style={{ backgroundColor: getDotColor(img.cloud) }}
-                                            ></div>
+                                                key={img.id}
+                                                className={styles.timelineItem}
+                                                onClick={() => handleTimelineClick(img, isCompareMode ? 'right' : 'single')}
+                                            >
+                                                <div
+                                                    className={`
+                                                        ${styles.timelineDot} 
+                                                        ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
+                                                        ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
+                                                        ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
+                                                    `}
+                                                    style={{ backgroundColor: getDotColor(img.cloud) }}
+                                                ></div>
 
-                                            <div className={`
-                                                ${styles.timelineDatePill}
-                                                ${index % labelStep === 0 ? styles.visibleLabel : ''}
-                                            `}>
-                                                {img.date}
+                                                <div className={`
+                                                    ${styles.timelineDatePill}
+                                                    ${index % labelStep === 0 ? styles.visibleLabel : ''}
+                                                `}>
+                                                    {img.date}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ));
-                                })()}
+                                        ));
+                                    })()}
+                                </div>
                             </div>
                         </div>
                     )}

@@ -333,13 +333,26 @@
 .timelineScroll {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   overflow-x: hidden;
   padding: 0 40px;
   height: 100%;
-  gap: 0;
   position: relative;
   width: 100%;
+}
+
+.timelineTrack {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0047ab;
+  /* Deep Blue */
+  height: 8px;
+  border-radius: 4px;
+  width: 100%;
+  position: relative;
+  margin-top: -20px;
+  /* Lift it up to make room for labels below */
 }
 
 .timelineScrollOverflow {
@@ -386,17 +399,19 @@
   justify-content: center;
   cursor: pointer;
   position: relative;
-  min-width: 15px;
-  /* Minimum width to keep dots clickable */
+  min-width: 4px;
   height: 100%;
   flex-shrink: 0;
-  /* Don't shrink below min-width in overflow */
-  transition: transform 0.2s;
+  z-index: 2;
 }
 
 .timelineScrollOverflow .timelineItem {
-  flex: 0 0 40px;
-  /* Fixed width when overflowing to ensure space */
+  flex: 0 0 30px;
+}
+
+.timelineScrollOverflow .timelineTrack {
+  width: fit-content;
+  min-width: 100%;
 }
 
 /* Remove per-item connectors */
@@ -404,18 +419,15 @@
   display: none;
 }
 
-/* Dot Style - Simple Dots on the line */
+/* Dot Style - Simple White Notches inside track */
 .timelineDot {
-  width: 10px;
-  height: 10px;
+  width: 4px;
+  height: 4px;
+  background-color: white !important;
   border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.5);
-  /* Default gray/white */
-  border: 2px solid transparent;
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.2s ease;
   z-index: 2;
   position: relative;
-  /* On top of line */
 }
 
 /* Hover/Active States */
@@ -425,41 +437,34 @@
   box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
 }
 
-.timelineDotActive {
-  transform: scale(1.8);
-  background-color: #0070f3 !important;
-  box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.3);
-}
-
-.timelineDotLeft {
-  transform: scale(1.6);
-  background-color: #e91e63 !important;
-}
-
+.timelineDotActive,
+.timelineDotLeft,
 .timelineDotRight {
-  transform: scale(1.6);
-  background-color: #00bcd4 !important;
+  width: 14px;
+  height: 14px;
+  background-color: #add8e6 !important;
+  /* Light Blue like reference */
+  box-shadow: 0 0 8px rgba(173, 216, 230, 0.8);
+  border: 2px solid white;
+  z-index: 5;
+  transform: scale(1) !important;
+  /* Override default scaling */
 }
 
 .timelineDatePill {
   position: absolute;
-  bottom: 0px;
-  /* Slightly above the bottom of the container */
-  background: transparent;
-  color: #fff;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.65rem;
-  /* Smaller font for many dates */
+  top: 15px;
+  /* Push down below the track */
+  font-size: 0.7rem;
   white-space: nowrap;
   opacity: 0;
-  /* Hidden by default */
   pointer-events: none;
   font-family: 'Inter', sans-serif;
   font-weight: 500;
-  z-index: 5;
+  color: rgba(255, 255, 255, 0.7);
   transition: opacity 0.2s ease;
 }
+
 
 .visibleLabel {
   opacity: 1 !important;
