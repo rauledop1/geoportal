@@ -1749,7 +1749,7 @@ export default function Geoportal() {
                                 ✕
                             </button>
 
-                            <div className={styles.timelineScroll}>
+                            <div className={`${styles.timelineScroll} ${groupedImages.length * 15 > windowWidth ? styles.timelineScrollOverflow : ''}`}>
                                 {(() => {
                                     const availableWidth = windowWidth * 0.8;
                                     const minLabelWidth = 80;
