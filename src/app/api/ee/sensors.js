@@ -12,6 +12,22 @@ export const SENSORS = {
         cloudBand: "CLOUD_COVER",
         idPrefix: "LANDSAT/LC09/C02/T1_L2/"
     },
+    "Sentinel-1 (SAR)": {
+        collection: "COPERNICUS/S1_GRD",
+        bands: { VV: 'VV', VH: 'VH' },
+        cloudBand: null, // SAR has no clouds
+        idPrefix: "COPERNICUS/S1_GRD/"
+    },
+    "Canopy Height (Meta)": {
+        collection: "projects/meta-forest-monitoring-okw37/assets/CanopyHeight",
+        isStatic: true,
+        visParams: {
+            min: 0,
+            max: 30,
+            palette: ['ffffff', 'f7fcb9', 'addd8e', '78c679', '41ab5d', '238443', '005a32']
+        },
+        idPrefix: "META/CANOPY/"
+    },
     "Combined (Landsat + Sentinel)": {
         isCombined: true // Flag for special handling
     }

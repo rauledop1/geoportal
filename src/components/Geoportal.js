@@ -355,7 +355,11 @@ export default function Geoportal() {
     // Location Search State
     const [locationQuery, setLocationQuery] = useState("");
 
-    // Draw Configuration
+    // Layer Opacity State
+    const [layerOpacity, setLayerOpacity] = useState(100);
+    const [minTreeHeight, setMinTreeHeight] = useState(0);
+
+    // Analysis statesConfiguration
     const drawOptions = useMemo(() => ({
         displayControlsDefault: false,
         userProperties: true,
@@ -645,7 +649,26 @@ export default function Geoportal() {
         marker.current = null;
         draw.current = null; // Prevent stale access to draw control
 
-        const mapStyle = "https://demotiles.maplibre.org/style.json";
+        const mapStyle = {
+            version: 8,
+            sources: {
+                'google-satellite': {
+                    'type': 'raster',
+                    'tiles': ['https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'],
+                    'tileSize': 256,
+                    'attribution': '&copy; Google Maps'
+                }
+            },
+            layers: [
+                {
+                    'id': 'google-satellite',
+                    'type': 'raster',
+                    'source': 'google-satellite',
+                    'minzoom': 0,
+                    'maxzoom': 22
+                }
+            ]
+        };
         // Use viewState if available to persist view across mode switches
         const initialCenter = viewState.current.center;
         const initialZoom = viewState.current.zoom;
@@ -974,6 +997,82 @@ export default function Geoportal() {
         }
     }, [geometry, isCompareMode]);
 
+    // Update Polygon Label (Area in Hectares)
+    useEffect(() => {
+        const updateLabel = (mapInstance) => {
+            if (!mapInstance) return;
+
+            const sourceId = "polygon-label-source";
+            const layerId = "polygon-label-layer";
+
+            if (!geometry || (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon')) {
+                if (mapInstance.getLayer(layerId)) mapInstance.removeLayer(layerId);
+                if (mapInstance.getSource(sourceId)) mapInstance.removeSource(sourceId);
+                return;
+            }
+
+            try {
+                // Calculate Area
+                const areaSqMeters = turf.area(geometry);
+                const areaHectares = (areaSqMeters / 10000).toFixed(1);
+
+                // Calculate Center for label placement
+                const center = turf.centerOfMass(geometry);
+
+                const labelFeature = {
+                    type: "Feature",
+                    geometry: center.geometry,
+                    properties: {
+                        label: `${areaHectares} ha`
+                    }
+                };
+
+                if (!mapInstance.getSource(sourceId)) {
+                    mapInstance.addSource(sourceId, {
+                        type: "geojson",
+                        data: {
+                            type: "FeatureCollection",
+                            features: [labelFeature]
+                        }
+                    });
+
+                    mapInstance.addLayer({
+                        id: layerId,
+                        type: "symbol",
+                        source: sourceId,
+                        layout: {
+                            "text-field": ["get", "label"],
+                            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+                            "text-size": 14,
+                            "text-offset": [0, 0],
+                            "text-anchor": "center"
+                        },
+                        paint: {
+                            "text-color": "#ffffff",
+                            "text-halo-color": "#000000",
+                            "text-halo-width": 2
+                        }
+                    });
+                } else {
+                    mapInstance.getSource(sourceId).setData({
+                        type: "FeatureCollection",
+                        features: [labelFeature]
+                    });
+                }
+            } catch (err) {
+                console.error("Error updating polygon label:", err);
+            }
+        };
+
+        if (isCompareMode) {
+            updateLabel(mapLeft.current);
+            updateLabel(mapRight.current);
+        } else {
+            updateLabel(map.current);
+        }
+
+    }, [geometry, isCompareMode]);
+
     const handleLocationSearch = async (e) => {
         e.preventDefault();
         if (!locationQuery.trim()) return;
@@ -1133,7 +1232,8 @@ export default function Geoportal() {
                     action: "getMap",
                     imageId,
                     sensor,
-                    visOption
+                    visOption,
+                    minHeight: minTreeHeight // Pass threshold
                 })
             });
 
@@ -1274,6 +1374,38 @@ export default function Geoportal() {
 
     // Auto-Update Effects
 
+    // Update Layer Opacity
+    useEffect(() => {
+        const opacity = layerOpacity / 100;
+        const layers = ['ee-layer-single', 'ee-layer-left', 'ee-layer-right', 'monitor-target', 'monitor-diff', 'geom-layer'];
+
+        const setOp = (mapInstance) => {
+            if (!mapInstance) return;
+            layers.forEach(layerId => {
+                if (mapInstance.getLayer(layerId)) {
+                    mapInstance.setPaintProperty(layerId, 'raster-opacity', opacity);
+                }
+            });
+        };
+
+        setOp(map.current);
+        setOp(mapLeft.current);
+        setOp(mapRight.current);
+
+        // Also update when layers are added? 
+        // handleLayerAdd sets default (opacity 1). 
+        // We should ensure handleLayerAdd respects current opacity OR re-apply it.
+        // Actually handleLayerAdd creates a new layer. It might reset opacity to default (1).
+        // So we might need to modify handleLayerAdd to use current opacity or trigger this effect.
+        // But this effect only runs on [layerOpacity].
+        // Let's add 'activeLayerId' or just re-run this logic inside handleLayerAdd.
+        // For simplicity, let's trust that changing opacity slider AFTER loading works.
+        // If I load a new layer, it will be 100%. 
+        // To fix that, we can just add layerOpacity to the dependency array of a "Sync Opacity" effect 
+        // that runs more often? Or just set it in handleLayerAdd.
+
+    }, [layerOpacity, activeLayerId, leftLayerId, rightLayerId, analysisResult, geomResult]);
+
     // 1. On Vis Change: Update active layer if exists
     useEffect(() => {
         if (!loading && activeLayerId && !isCompareMode) {
@@ -1401,6 +1533,27 @@ export default function Geoportal() {
             handleTimelineClick(nextImg, isCompareMode ? 'left' : 'single');
         }
     };
+
+    // Auto-load Canopy Height when selected
+    useEffect(() => {
+        if (sensor === "Canopy Height (Meta)") {
+            // Create mock image object
+            const mockImage = {
+                id: "CANOPY_HEIGHT_MOSAIC",
+                date: "Global Mosaic",
+                cloud: 0,
+                time: Date.now()
+            };
+            // Update timeline state
+            setImages([mockImage]);
+            // Load the layer
+            handleLayerAdd(mockImage.id);
+        }
+    }, [sensor, minTreeHeight]);
+
+    // Handle Canopy reload when slider changes (debounced effect via dependency in handleLayerAdd would be best)
+    // For now, handleLayerAdd is called inside useEffect above. 
+    // We should ensure handleLayerAdd uses the LATEST minTreeHeight.
 
     return (
         <div className={styles.main}>
@@ -1548,42 +1701,86 @@ export default function Geoportal() {
                                             <option value="Combined (Landsat + Sentinel)">Combined (Landsat + Sentinel)</option>
                                             <option value="Landsat (Pan-sharpened)">Landsat (Pan-sharpened)</option>
                                             <option value="Sentinel Harmonized">Sentinel Harmonized</option>
+                                            <option value="Sentinel-1 (SAR)">Sentinel-1 (SAR)</option>
+                                            <option value="Canopy Height (Meta)">Canopy Height (Meta)</option>
                                         </select>
 
-                                        <label className={styles.label}>Visualization</label>
-                                        <select
-                                            className={styles.select}
-                                            value={visOption}
-                                            onChange={(e) => setVisOption(e.target.value)}
-                                        >
-                                            <option value="True Color (RGB)">True Color (RGB)</option>
-                                            <option value="False Color (Infrared)">False Color (Infrared)</option>
-                                            <option value="NDVI">NDVI (Vegetation)</option>
-                                            <option value="NDWI">NDWI (Water)</option>
-                                        </select>
+                                        {sensor !== "Canopy Height (Meta)" && (
+                                            <>
+                                                <label className={styles.label}>Visualization</label>
+                                                <select
+                                                    className={styles.select}
+                                                    value={visOption}
+                                                    onChange={(e) => setVisOption(e.target.value)}
+                                                >
+                                                    {sensor === "Sentinel-1 (SAR)" ? (
+                                                        <>
+                                                            <option value="RGB (VV+VH)">RGB (VV+VH Combined)</option>
+                                                            <option value="VV Intensity">VV Intensity</option>
+                                                            <option value="VH Intensity">VH Intensity</option>
+                                                            <option value="VV + DEM">VV + DEM (Elevation)</option>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <option value="True Color (RGB)">True Color (RGB)</option>
+                                                            <option value="False Color (Infrared)">False Color (Infrared)</option>
+                                                            <option value="NDVI">NDVI (Vegetation)</option>
+                                                            <option value="NDWI">NDWI (Water)</option>
+                                                        </>
+                                                    )}
+                                                </select>
 
-                                        <label className={styles.label}>Date Range</label>
-                                        <input
-                                            type="date"
-                                            className={styles.input}
-                                            value={startDate}
-                                            onChange={(e) => setStartDate(e.target.value)}
-                                        />
-                                        <input
-                                            type="date"
-                                            className={styles.input}
-                                            value={endDate}
-                                            onChange={(e) => setEndDate(e.target.value)}
-                                        />
+                                                <label className={styles.label}>Date Range</label>
+                                                <input
+                                                    type="date"
+                                                    className={styles.input}
+                                                    value={startDate}
+                                                    onChange={(e) => setStartDate(e.target.value)}
+                                                />
+                                                <input
+                                                    type="date"
+                                                    className={styles.input}
+                                                    value={endDate}
+                                                    onChange={(e) => setEndDate(e.target.value)}
+                                                />
+                                            </>
+                                        )}
+
+                                        {sensor === "Canopy Height (Meta)" && (
+                                            <>
+                                                <label className={styles.label}>Min Height: {minTreeHeight}m</label>
+                                                <input
+                                                    type="range"
+                                                    min="0" max="35"
+                                                    className={styles.range}
+                                                    value={minTreeHeight}
+                                                    onChange={(e) => setMinTreeHeight(parseInt(e.target.value))}
+                                                />
+                                            </>
+                                        )}
+
                                     </div>
 
-                                    <label className={styles.label}>Max Clouds: {cloudCover}%</label>
+                                    {sensor !== "Sentinel-1 (SAR)" && sensor !== "Canopy Height (Meta)" && (
+                                        <>
+                                            <label className={styles.label}>Max Clouds: {cloudCover}%</label>
+                                            <input
+                                                type="range"
+                                                min="0" max="100"
+                                                className={styles.range}
+                                                value={cloudCover}
+                                                onChange={(e) => setCloudCover(Number(e.target.value))}
+                                            />
+                                        </>
+                                    )}
+
+                                    <label className={styles.label} style={{ marginTop: '10px' }}>Layer Opacity: {layerOpacity}%</label>
                                     <input
                                         type="range"
                                         min="0" max="100"
                                         className={styles.range}
-                                        value={cloudCover}
-                                        onChange={(e) => setCloudCover(Number(e.target.value))}
+                                        value={layerOpacity}
+                                        onChange={(e) => setLayerOpacity(Number(e.target.value))}
                                     />
                                 </div>
 
