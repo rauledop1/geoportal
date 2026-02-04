@@ -447,133 +447,129 @@ export default function Geoportal() {
     const handleDrawCreate = (e, currentDrawControl) => {
         // 1. Autocomplete / Erase Overlap
         if (eraseOverlap && (e.type === 'draw.create' || e.type === 'draw.update')) {
-            const features = currentDrawControl.getAll().features;
-            const modifiedFeatures = e.features; // Array of features being created/updated
+            setTimeout(() => {
+                const features = currentDrawControl.getAll().features;
+                const modifiedFeatures = e.features; // Array of features being created/updated
 
-            modifiedFeatures.forEach(modFeature => {
-                if (modFeature.geometry.type === 'Polygon' || modFeature.geometry.type === 'MultiPolygon') {
-                    // Find other polygons
-                    const others = features.filter(f =>
-                        f.id !== modFeature.id &&
-                        (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
-                    );
+                modifiedFeatures.forEach(modFeature => {
+                    if (modFeature.geometry.type === 'Polygon' || modFeature.geometry.type === 'MultiPolygon') {
+                        // Find other polygons
+                        const others = features.filter(f =>
+                            f.id !== modFeature.id &&
+                            (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
+                        );
 
-                    if (others.length > 0) {
-                        let currentGeometry = modFeature;
-                        let clipped = false;
+                        if (others.length > 0) {
+                            let currentGeometry = modFeature;
+                            let clipped = false;
 
-                        for (const other of others) {
-                            try {
-                                // Clean up geometry with buffer(0) to fix self-intersections
-                                const cleanedCurrent = turf.buffer(currentGeometry, 0);
-                                const cleanedOther = turf.buffer(other, 0);
+                            for (const other of others) {
+                                try {
+                                    // Clean up geometry with buffer(0) to fix self-intersections
+                                    const cleanedCurrent = turf.buffer(currentGeometry, 0);
+                                    const cleanedOther = turf.buffer(other, 0);
 
-                                const diff = turf.difference(cleanedCurrent, cleanedOther);
-                                if (diff) {
-                                    currentGeometry = diff;
-                                    clipped = true;
-                                } else {
-                                    // Fully erased?
-                                    currentGeometry = null;
-                                    clipped = true;
-                                    break;
+                                    const diff = turf.difference(cleanedCurrent, cleanedOther);
+                                    if (diff) {
+                                        currentGeometry = diff;
+                                        clipped = true;
+                                    } else {
+                                        // Fully erased?
+                                        currentGeometry = null;
+                                        clipped = true;
+                                        break;
+                                    }
+                                } catch (err) {
+                                    console.warn("Clipping error in Autocomplete", err);
                                 }
-                            } catch (err) {
-                                console.warn("Clipping error in Autocomplete", err);
                             }
-                        }
 
-                        if (clipped) {
-                            if (currentGeometry) {
-                                // Update the feature in draw
-                                currentGeometry.id = modFeature.id;
-                                currentGeometry.properties = modFeature.properties;
-                                currentDrawControl.add(currentGeometry);
-                            } else {
-                                // Fully erased, remove it
-                                currentDrawControl.delete(modFeature.id);
+                            if (clipped) {
+                                if (currentGeometry) {
+                                    // Update the feature in draw
+                                    currentGeometry.id = modFeature.id;
+                                    currentGeometry.properties = modFeature.properties;
+                                    currentDrawControl.add(currentGeometry);
+                                } else {
+                                    // Fully erased, remove it
+                                    currentDrawControl.delete(modFeature.id);
+                                }
                             }
                         }
                     }
-                }
-            });
+                });
+            }, 50);
         }
 
         // 2. Cut Logic
         if (drawModeRef.current === 'cut' && e.type === 'draw.create') {
             const cutter = e.features[0];
             if (cutter && cutter.geometry.type === 'LineString') {
-                try {
-                    const allData = currentDrawControl.getAll();
-                    // Target polygons to be cut (exclude the cutter itself)
-                    const targets = allData.features.filter(f =>
-                        f.id !== cutter.id &&
-                        (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
-                    );
-
-                    // Buffer the cutter line (minimal buffer to avoid gap)
-                    const cutterPoly = turf.buffer(cutter, 0.000001, { units: 'kilometers' });
-
-                    const newFeatures = [];
-                    const idsToDelete = [cutter.id]; // Always remove the cutter line
-
-                    let cutPerformed = false;
-
-                    targets.forEach(target => {
-                        try {
-                            const cleanedTarget = turf.buffer(target, 0);
-                            const diff = turf.difference(cleanedTarget, cutterPoly);
-
-                            if (diff) {
-                                idsToDelete.push(target.id);
-                                if (diff.geometry.type === 'MultiPolygon') {
-                                    diff.geometry.coordinates.forEach(coords => {
-                                        newFeatures.push({
-                                            type: 'Feature',
-                                            properties: target.properties,
-                                            geometry: {
-                                                type: 'Polygon',
-                                                coordinates: coords
-                                            }
-                                        });
-                                    });
-                                } else {
-                                    newFeatures.push(diff);
-                                }
-                                cutPerformed = true;
-                            }
-                        } catch (err) {
-                            console.warn("Cut error for target", target.id, err);
-                        }
-                    });
-
-                    if (cutPerformed) {
-                        currentDrawControl.delete(idsToDelete);
-                        if (newFeatures.length > 0) {
-                            currentDrawControl.add({ type: 'FeatureCollection', features: newFeatures });
-                            // Update state with the first valid geometry so something is selected
-                            setGeometry(newFeatures[0].geometry);
-                        } else {
-                            setGeometry(null);
-                        }
-                    } else {
-                        currentDrawControl.delete([cutter.id]);
-                    }
-                } catch (err) {
-                    console.error("Cut error", err);
-                    alert("Cut failed: " + err.message);
-                }
-
-                // Reset mode
                 setTimeout(() => {
-                    currentDrawControl.changeMode('simple_select');
-                }, 10);
-                setDrawMode('simple');
+                    try {
+                        const allData = currentDrawControl.getAll();
+                        const targets = allData.features.filter(f =>
+                            f.id !== cutter.id &&
+                            (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
+                        );
+
+                        // Increased buffer to 10cm (0.0001 km) for better reliability
+                        const cutterPoly = turf.buffer(cutter, 0.0001, { units: 'kilometers' });
+
+                        const newFeatures = [];
+                        const idsToDelete = [cutter.id];
+
+                        let cutPerformed = false;
+
+                        targets.forEach(target => {
+                            try {
+                                const cleanedTarget = turf.buffer(target, 0);
+                                const diff = turf.difference(cleanedTarget, cutterPoly);
+
+                                if (diff) {
+                                    idsToDelete.push(target.id);
+                                    if (diff.geometry.type === 'MultiPolygon') {
+                                        diff.geometry.coordinates.forEach(coords => {
+                                            newFeatures.push({
+                                                type: 'Feature',
+                                                properties: target.properties,
+                                                geometry: { type: 'Polygon', coordinates: coords }
+                                            });
+                                        });
+                                    } else {
+                                        newFeatures.push(diff);
+                                    }
+                                    cutPerformed = true;
+                                }
+                            } catch (err) {
+                                console.warn("Cut error for target", target.id, err);
+                            }
+                        });
+
+                        if (cutPerformed) {
+                            currentDrawControl.delete(idsToDelete);
+                            if (newFeatures.length > 0) {
+                                currentDrawControl.add({ type: 'FeatureCollection', features: newFeatures });
+                                setGeometry(newFeatures[0].geometry);
+                            } else {
+                                setGeometry(null);
+                            }
+                        } else {
+                            currentDrawControl.delete([cutter.id]);
+                        }
+                    } catch (err) {
+                        console.error("Cut error", err);
+                    }
+
+                    setTimeout(() => {
+                        currentDrawControl.changeMode('simple_select');
+                    }, 50);
+                    setDrawMode('simple');
+                }, 50);
             }
         }
 
         // 3. Update Geometry State
-        // Use timeout to let drawControl settle if needed
         setTimeout(() => {
             const finalData = currentDrawControl.getAll();
             if (finalData.features.length > 0) {
@@ -582,7 +578,7 @@ export default function Geoportal() {
             } else {
                 setGeometry(null);
             }
-        }, 0);
+        }, 100);
     };
 
     // Initialize Map(s) based on mode
