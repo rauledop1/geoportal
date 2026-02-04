@@ -81,6 +81,7 @@ export async function POST(req) {
           id: ee.String(selectedSensor.idPrefix).cat(img.get("system:index")),
           date: img.date().format("YYYY-MM-dd"),
           cloud: img.get(selectedSensor.cloudBand),
+          time: img.get("system:time_start")
         });
       });
 

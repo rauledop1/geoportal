@@ -13,6 +13,7 @@ import shp from "shpjs";
 import JSZip from "jszip";
 import { kml } from "@tmcw/togeojson";
 import * as turf from "@turf/turf";
+import { IconPolygon, IconCut, IconMagnet, IconTrash } from './Icons';
 import {
     SnapPolygonMode,
     SnapLineMode,
@@ -374,10 +375,7 @@ export default function Geoportal() {
         snapModeOptions: {
             overlap: true
         },
-        controls: {
-            polygon: true,
-            trash: true
-        },
+        controls: {}, // Hide all default controls
         styles: [
             // ACTIVE (being drawn)
             // line stroke
@@ -1232,18 +1230,46 @@ export default function Geoportal() {
     }, [groupedImages.length, windowWidth]);
     // Re-run when images change or window resizes
 
-    // Scroll to most recent dates when timeline opens
+    // Scroll to most recent dates or active image when timeline opens
     useEffect(() => {
         if (showTimeline && timelineScrollRef.current && groupedImages.length > 0) {
             // Minimal delay to allow DOM to calculate scrollWidth
             const timer = setTimeout(() => {
                 if (timelineScrollRef.current) {
+                    // If we have an active layer, try to center it
+                    if (activeLayerId) {
+                        const imgIndex = groupedImages.findIndex(img => img.id === activeLayerId);
+                        if (imgIndex >= 0) {
+                            const img = groupedImages[imgIndex];
+                            // Re-use logic for centering (simplified here)
+                            const start = new Date(groupedImages[0].date).getTime();
+                            const end = new Date(groupedImages[groupedImages.length - 1].date).getTime();
+                            const current = new Date(img.date).getTime();
+                            const percent = ((current - start) / (end - start));
+
+                            const track = timelineScrollRef.current.children[0];
+                            if (track) {
+                                const trackWidth = track.scrollWidth;
+                                const pointX = percent * trackWidth;
+                                const containerWidth = timelineScrollRef.current.offsetWidth;
+                                const targetScrollLeft = pointX - (containerWidth / 2);
+
+                                timelineScrollRef.current.scrollTo({
+                                    left: targetScrollLeft,
+                                    behavior: 'smooth'
+                                });
+                                return;
+                            }
+                        }
+                    }
+
+                    // Default logic: Scroll to end (newest)
                     timelineScrollRef.current.scrollLeft = timelineScrollRef.current.scrollWidth;
                 }
             }, 100);
             return () => clearTimeout(timer);
         }
-    }, [showTimeline, groupedImages.length]);
+    }, [showTimeline, groupedImages.length, activeLayerId]);
 
 
     // Auto-Update Effects
@@ -1354,6 +1380,28 @@ export default function Geoportal() {
         }
     };
 
+    // Timeline Navigation Handlers
+    const getActiveImageIndex = () => {
+        if (!activeLayerId || groupedImages.length === 0) return -1;
+        return groupedImages.findIndex(img => img.id === activeLayerId);
+    };
+
+    const handlePrevImage = () => {
+        const index = getActiveImageIndex();
+        if (index > 0) {
+            const prevImg = groupedImages[index - 1];
+            handleTimelineClick(prevImg, isCompareMode ? 'left' : 'single');
+        }
+    };
+
+    const handleNextImage = () => {
+        const index = getActiveImageIndex();
+        if (index >= 0 && index < groupedImages.length - 1) {
+            const nextImg = groupedImages[index + 1];
+            handleTimelineClick(nextImg, isCompareMode ? 'left' : 'single');
+        }
+    };
+
     return (
         <div className={styles.main}>
             {/* Navbar */}
@@ -1405,6 +1453,38 @@ export default function Geoportal() {
                     />
                     <span className={styles.searchIcon} onClick={handleLocationSearch}>🔍</span>
                 </form>
+
+                {/* Navbar Draw Tools */}
+                <div className={styles.navToolbar}>
+                    <button
+                        className={`${styles.navIconBtn} ${drawMode === 'simple' && !eraseOverlap ? styles.navIconBtnActive : ''}`}
+                        onClick={handleDrawPolygon}
+                        title="Draw Polygon"
+                    >
+                        <IconPolygon />
+                    </button>
+                    <button
+                        className={`${styles.navIconBtn} ${drawMode === 'cut' ? styles.navIconBtnActive : ''}`}
+                        onClick={handleCutPolygon}
+                        title="Cut Polygon"
+                    >
+                        <IconCut />
+                    </button>
+                    <button
+                        className={`${styles.navIconBtn} ${eraseOverlap ? styles.navIconBtnActive : ''}`}
+                        onClick={handleDrawAutocomplete}
+                        title="Auto-Complete (Magnet)"
+                    >
+                        <IconMagnet />
+                    </button>
+                    <button
+                        className={styles.navIconBtn}
+                        onClick={handleDeleteSelected}
+                        title="Clear Selection"
+                    >
+                        <IconTrash />
+                    </button>
+                </div>
                 <div style={{ width: '20px' }}></div>
             </nav>
 
@@ -1516,6 +1596,8 @@ export default function Geoportal() {
                                 >
                                     {loading ? "Searching..." : "Search Images"}
                                 </button>
+
+
                             </>
                         )}
 
@@ -1551,21 +1633,35 @@ export default function Geoportal() {
                                 <div className={styles.subtitle}>Use tools to create polygons</div>
 
                                 <div className={styles.section}>
-                                    <div className={styles.toolBtn} onClick={handleDrawPolygon}>
-                                        <span className={styles.toolIcon}>⬠</span>
-                                        <span>Draw Polygon</span>
-                                    </div>
-                                    <div className={`${styles.toolBtn} ${drawMode === 'cut' ? styles.toolBtnActive : ''}`} onClick={handleCutPolygon}>
-                                        <span className={styles.toolIcon}>✂️</span>
-                                        <span>Cut Polygon (Draw Line)</span>
-                                    </div>
-                                    <div className={styles.toolBtn} onClick={handleDrawAutocomplete}>
-                                        <span className={styles.toolIcon}>🧩</span>
-                                        <span>Draw w/ Autocomplete</span>
-                                    </div>
-                                    <div className={styles.toolBtn} onClick={handleDeleteSelected}>
-                                        <span className={styles.toolIcon}>🗑️</span>
-                                        <span>Delete Selected</span>
+                                    <div className={styles.drawToolbar}>
+                                        <div
+                                            className={`${styles.iconBtn} ${drawMode === 'simple' && !eraseOverlap ? styles.iconBtnActive : ''}`}
+                                            onClick={handleDrawPolygon}
+                                            title="Draw Polygon"
+                                        >
+                                            ⬠
+                                        </div>
+                                        <div
+                                            className={`${styles.iconBtn} ${drawMode === 'cut' ? styles.iconBtnActive : ''}`}
+                                            onClick={handleCutPolygon}
+                                            title="Cut Polygon"
+                                        >
+                                            ✂️
+                                        </div>
+                                        <div
+                                            className={`${styles.iconBtn} ${eraseOverlap ? styles.iconBtnActive : ''}`}
+                                            onClick={handleDrawAutocomplete}
+                                            title="Draw w/ Autocomplete"
+                                        >
+                                            🧩
+                                        </div>
+                                        <div
+                                            className={styles.iconBtn}
+                                            onClick={handleDeleteSelected}
+                                            title="Delete Selected"
+                                        >
+                                            🗑️
+                                        </div>
                                     </div>
 
                                     <div className={styles.checkboxContainer} style={{ marginTop: '10px' }}>
@@ -1821,18 +1917,31 @@ export default function Geoportal() {
                         gap: '10px',
                         pointerEvents: 'auto'
                     }}>
-                        {/* Only show if images exist */}
                         {groupedImages.length > 0 && !showTimeline && (
-                            <button
-                                className={styles.timelineToggleBtn}
-                                onClick={() => setShowTimeline(true)}
-                                title="Show Timeline"
-                            >
-                                <span style={{ marginRight: '8px' }}>📅</span>
-                                <span className={styles.compactTimelineDate}>
+                            <div className={styles.timelineNav} style={{ background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                                <button
+                                    className={styles.navBtn}
+                                    onClick={(e) => { e.stopPropagation(); handlePrevImage(); }}
+                                    disabled={getActiveImageIndex() <= 0}
+                                >
+                                    ‹
+                                </button>
+                                <span
+                                    className={styles.navDate}
+                                    onClick={() => setShowTimeline(true)}
+                                    style={{ cursor: 'pointer', minWidth: '100px' }}
+                                    title="Show Timeline"
+                                >
                                     {activeLayerId ? (groupedImages.find(img => img.id === activeLayerId)?.date || 'Cargando...') : 'Seleccionar imagen'}
                                 </span>
-                            </button>
+                                <button
+                                    className={styles.navBtn}
+                                    onClick={(e) => { e.stopPropagation(); handleNextImage(); }}
+                                    disabled={getActiveImageIndex() === -1 || getActiveImageIndex() >= groupedImages.length - 1}
+                                >
+                                    ›
+                                </button>
+                            </div>
                         )}
                     </div>
 
@@ -1846,6 +1955,29 @@ export default function Geoportal() {
                             >
                                 ✕
                             </button>
+
+                            {/* Navigation Section */}
+                            <div className={styles.timelineNav}>
+                                <button
+                                    className={styles.navBtn}
+                                    onClick={handlePrevImage}
+                                    disabled={getActiveImageIndex() <= 0}
+                                >
+                                    ‹
+                                </button>
+                                <span className={styles.navDate}>
+                                    {activeLayerId
+                                        ? (groupedImages.find(img => img.id === activeLayerId)?.date || 'Cargando...')
+                                        : 'Seleccionar imagen'}
+                                </span>
+                                <button
+                                    className={styles.navBtn}
+                                    onClick={handleNextImage}
+                                    disabled={getActiveImageIndex() === -1 || getActiveImageIndex() >= groupedImages.length - 1}
+                                >
+                                    ›
+                                </button>
+                            </div>
 
                             <div
                                 ref={timelineScrollRef}
@@ -1862,6 +1994,71 @@ export default function Geoportal() {
                                     className={styles.timelineTrack}
                                     style={timelineTrackStyle}
                                 >
+                                    {/* Month/Year Axis Labels */}
+                                    {(() => {
+                                        if (groupedImages.length < 2) return null;
+                                        try {
+                                            const start = new Date(groupedImages[0].date);
+                                            const end = new Date(groupedImages[groupedImages.length - 1].date);
+                                            const startTime = start.getTime();
+                                            const endTime = end.getTime();
+                                            const diffDays = (endTime - startTime) / (1000 * 60 * 60 * 24);
+
+                                            const ticks = [];
+                                            let current = new Date(start.getFullYear(), start.getMonth(), 1);
+
+                                            // Handle different granularities based on range
+                                            const showMonths = diffDays < 730; // Show months if less than 2 years
+
+                                            if (current < start) {
+                                                current.setMonth(current.getMonth() + 1);
+                                            }
+
+                                            while (current <= end) {
+                                                const time = current.getTime();
+                                                const percent = ((time - startTime) / (endTime - startTime)) * 100;
+                                                const isJan = current.getMonth() === 0;
+
+                                                let label = "";
+                                                let isYear = false;
+
+                                                if (isJan) {
+                                                    label = current.getFullYear().toString();
+                                                    isYear = true;
+                                                } else if (showMonths) {
+                                                    // Only show every month if range is small, or every 3 if larger
+                                                    const step = diffDays > 365 ? 3 : 1;
+                                                    if (current.getMonth() % step === 0) {
+                                                        label = current.toLocaleString('default', { month: 'short' });
+                                                    }
+                                                }
+
+                                                if (label) {
+                                                    ticks.push({
+                                                        label,
+                                                        percent: `${percent}%`,
+                                                        isYear
+                                                    });
+                                                }
+
+                                                current.setMonth(current.getMonth() + 1);
+                                            }
+
+                                            return ticks.map((tick, i) => (
+                                                <div
+                                                    key={i}
+                                                    className={`${styles.timelineAxisLabel} ${tick.isYear ? styles.timelineAxisLabelYear : ''}`}
+                                                    style={{ left: tick.percent }}
+                                                >
+                                                    {tick.label}
+                                                </div>
+                                            ));
+                                        } catch (e) {
+                                            console.error("Error generating axis ticks:", e);
+                                            return null;
+                                        }
+                                    })()}
+
                                     {groupedImages.map((img, index) => {
                                         let leftPos = "50%";
                                         if (groupedImages.length > 1) {
@@ -1885,20 +2082,13 @@ export default function Geoportal() {
                                             >
                                                 <div
                                                     className={`
-                                                    ${styles.timelineDot} 
-                                                    ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
-                                                    ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
-                                                    ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
-                                                `}
+                                                        ${styles.timelineDot} 
+                                                        ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
+                                                        ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
+                                                        ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
+                                                    `}
                                                     style={{ backgroundColor: getDotColor(img.cloud) }}
                                                 ></div>
-
-                                                <div className={`
-                                                    ${styles.timelineDatePill}
-                                                    ${index % timelineLabelStep === 0 ? styles.visibleLabel : ''}
-                                                `}>
-                                                    {img.date}
-                                                </div>
                                             </div>
                                         );
                                     })}
@@ -1908,6 +2098,6 @@ export default function Geoportal() {
                     )}
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

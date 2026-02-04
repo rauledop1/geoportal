@@ -124,15 +124,21 @@
 /* Floating Sidebar (Explorer Modal) */
 .sidebar {
   position: absolute;
-  top: 20px;
+  top: 100px;
+  /* Moved down to clear Navbar */
   left: 20px;
-  width: 320px;
-  max-height: calc(100% - 180px);
+  width: 350px;
+  max-height: calc(100% - 200px);
+  /* Adjusted for new top position */
   /* Leave space for timeline */
-  background-color: rgba(255, 255, 255, 0.95);
+  background-color: #2d2d2d;
+  /* EO Browser Dark */
+  color: #eee;
+  /* Light text */
   backdrop-filter: blur(10px);
-  border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  /* Less rounded */
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
   z-index: 10;
@@ -141,6 +147,8 @@
   transform: translateX(-20px);
   opacity: 0;
   pointer-events: none;
+  font-family: 'Roboto', sans-serif;
+  /* Closer to EO Browser */
 }
 
 .sidebarVisible {
@@ -150,99 +158,113 @@
 }
 
 .sidebarContent {
-  padding: 20px;
+  padding: 0;
+  /* Remove default padding to handle sections better */
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sidebarHeader {
+  padding: 15px 20px;
+  background-color: #222;
+  border-bottom: 1px solid #444;
 }
 
 .title {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.1rem;
+  font-weight: 500;
   margin-bottom: 5px;
-  color: #111;
-  text-transform: uppercase;
+  color: #fff;
   letter-spacing: 0.5px;
 }
 
 .subtitle {
   font-size: 0.85rem;
-  color: #666;
-  margin-bottom: 20px;
+  color: #bbb;
+  margin-bottom: 0px;
 }
 
 .section {
-  margin-bottom: 24px;
+  padding: 20px;
+  border-bottom: 1px solid #444;
 }
 
 .label {
   display: block;
   font-size: 0.8rem;
   margin-bottom: 6px;
-  color: #555;
-  font-weight: 600;
+  color: #ccc;
+  font-weight: 500;
 }
 
 .input,
 .range,
 .select {
   width: 100%;
-  padding: 10px;
-  background-color: #f5f5f5;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
+  padding: 8px;
+  background-color: #333;
+  border: 1px solid #555;
+  border-radius: 4px;
   margin-bottom: 12px;
   box-sizing: border-box;
   font-size: 0.9rem;
+  color: white;
   transition: border-color 0.2s;
 }
 
 .input:focus,
 .select:focus {
-  border-color: #0070f3;
+  border-color: #a4c639;
+  /* EO Green */
   outline: none;
 }
 
 .button {
   width: 100%;
-  padding: 12px;
-  background-color: #0070f3;
-  color: white;
+  padding: 10px;
+  background-color: #a4c639;
+  /* EO Green/Lime */
+  color: #222;
   border: none;
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.9rem;
   transition: background-color 0.2s;
-  box-shadow: 0 2px 5px rgba(0, 112, 243, 0.3);
+  text-transform: uppercase;
 }
 
 .button:hover {
-  background-color: #0051a2;
+  background-color: #8da830;
 }
 
 .compareToggle {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #f0f0f0;
+  background: #333;
   padding: 10px;
-  border-radius: 8px;
+  border-radius: 4px;
   margin-bottom: 20px;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
+  color: #ddd;
 }
 
 .toggleSwitch {
   width: 40px;
   height: 20px;
-  background-color: #ccc;
+  background-color: #555;
   border-radius: 20px;
   position: relative;
   transition: background-color 0.2s;
 }
 
 .toggleActive .toggleSwitch {
-  background-color: #0070f3;
+  background-color: #a4c639;
 }
 
 .toggleKnob {
@@ -262,23 +284,107 @@
 
 
 .error {
-  background-color: #fff2f2;
-  color: #d32f2f;
-  border: 1px solid #ffcdd2;
+  background-color: #3e2020;
+  color: #ff9999;
+  border: 1px solid #803030;
   padding: 10px;
-  border-radius: 6px;
+  border-radius: 4px;
   margin-top: 10px;
   font-size: 0.85rem;
 }
 
 .instruction {
   font-size: 0.85rem;
-  color: #555;
+  color: #ccc;
   line-height: 1.5;
-  background-color: #f8f9fa;
+  background-color: #333;
   padding: 12px;
-  border-radius: 8px;
-  border-left: 4px solid #0070f3;
+  border-radius: 4px;
+  border-left: 4px solid #a4c639;
+}
+
+/* Result Cards */
+.resultsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.resultCard {
+  display: flex;
+  flex-direction: column;
+  background-color: #383838;
+  border-radius: 4px;
+  overflow: hidden;
+  border-left: 4px solid #a4c639;
+  /* EO Accent */
+}
+
+.cardHeader {
+  padding: 10px;
+  background-color: #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #444;
+}
+
+.cardTitle {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #eee;
+}
+
+.cardBody {
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+}
+
+.cardThumbnail {
+  width: 80px;
+  height: 80px;
+  background-color: #222;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: #555;
+  border-radius: 4px;
+}
+
+.cardInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: #ccc;
+}
+
+.infoRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.visualizeBtn {
+  margin-top: auto;
+  padding: 6px;
+  background-color: #a4c639;
+  color: #111;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.8rem;
+  width: 100%;
+  text-align: center;
+}
+
+.visualizeBtn:hover {
+  background-color: #8da830;
 }
 
 /* Timeline - Fixed Bottom, Modern Glassmorphism */
@@ -306,17 +412,20 @@
   z-index: 1000;
 
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 0 20px;
+  flex-direction: row;
+  /* Horizontal layout */
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 10px;
+  /* Reduced padding */
   pointer-events: auto;
 }
 
 .timelineCloseBtn {
   position: absolute;
-  top: 50%;
-  right: 20px;
-  transform: translateY(-50%);
+  top: 5px;
+  right: 15px;
+  transform: none;
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.6);
@@ -338,21 +447,62 @@
   padding: 0 40px;
   height: 100%;
   position: relative;
-  width: 100%;
+  width: auto;
+  flex: 1;
+  /* Take remaining space */
+}
+
+.timelineNav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: 20px;
+  flex-shrink: 0;
+}
+
+.navBtn {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.navBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.navBtn:disabled {
+  color: rgba(255, 255, 255, 0.3);
+  cursor: default;
+  pointer-events: none;
+}
+
+.navDate {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #add8e6;
+  /* Light Blue */
+  white-space: nowrap;
 }
 
 .timelineTrack {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #0047ab;
-  /* Deep Blue */
-  height: 8px;
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  /* Thinner line */
+  height: 2px;
+  border-radius: 1px;
   width: 100%;
   position: relative;
-  margin-top: -20px;
-  /* Lift it up to make room for labels below */
+  /* margin-top removed to keep it centered properly */
 }
 
 .timelineScrollOverflow {
@@ -388,8 +538,9 @@
   top: 50%;
   left: 20px;
   right: 20px;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.2);
+  height: 0px;
+  /* Hidden in favor of thicker track */
+  background: transparent;
   transform: translateY(-50%);
   z-index: 0;
   width: max-content;
@@ -428,8 +579,8 @@
 
 /* Dot Style - Simple White Notches inside track */
 .timelineDot {
-  width: 4px;
-  height: 4px;
+  width: 6px;
+  height: 6px;
   background-color: white !important;
   border-radius: 50%;
   transition: all 0.2s ease;
@@ -447,43 +598,41 @@
 .timelineDotActive,
 .timelineDotLeft,
 .timelineDotRight {
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
   background-color: #add8e6 !important;
   /* Light Blue like reference */
-  box-shadow: 0 0 8px rgba(173, 216, 230, 0.8);
-  border: 2px solid white;
+  box-shadow: 0 0 10px rgba(173, 216, 230, 0.8);
+  border: 3px solid white;
   z-index: 5;
   transform: scale(1) !important;
   /* Override default scaling */
 }
 
-.timelineDatePill {
+.timelineAxisLabel {
   position: absolute;
-  top: 15px;
-  /* Push down below the track */
-  font-size: 0.7rem;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  font-family: 'Inter', sans-serif;
+  top: 12px;
+  /* Closer to the thinner line */
+  font-size: 0.8rem;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.7);
-  transition: opacity 0.2s ease;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+  z-index: 1;
 }
 
-
-.visibleLabel {
-  opacity: 1 !important;
-}
-
-.timelineItem:hover .timelineDatePill,
-.timelineDotActive+.timelineDatePill {
-  opacity: 1;
+.timelineAxisLabelYear {
+  color: white;
   font-weight: 700;
-  color: #0070f3;
-  z-index: 10;
+  font-size: 0.85rem;
 }
+
+/* Individual date pills removed as requested */
+.timelineDatePill {
+  display: none;
+}
+
 
 /* Hidden by requirement */
 .timelinePopover {
@@ -530,35 +679,35 @@
 /* Tabs */
 .tabNav {
   display: flex;
-  background-color: #f0f0f0;
-  border-bottom: 1px solid #ddd;
-  margin: -20px -20px 20px -20px;
-  /* Counteract padding */
+  background-color: #222;
+  border-bottom: 1px solid #444;
 }
 
 .tabBtn {
   flex: 1;
-  padding: 12px 0;
+  padding: 15px 0;
   border: none;
   background: none;
   cursor: pointer;
   font-weight: 600;
-  color: #666;
-  border-bottom: 2px solid transparent;
+  color: #888;
+  border-bottom: 3px solid transparent;
   transition: all 0.2s;
   font-size: 0.9rem;
+  text-transform: uppercase;
 }
 
 .tabBtn:hover {
-  background-color: #e5e5e5;
-  color: #333;
+  background-color: #2d2d2d;
+  color: #ddd;
 }
 
 .tabBtnActive {
-  color: #0070f3;
-  border-bottom-color: #0070f3;
-  background-color: white;
+  color: #a4c639;
+  border-bottom-color: #a4c639;
+  background-color: #2d2d2d;
 }
+
 
 /* Dropzone */
 .dropZone {
@@ -592,36 +741,49 @@
 }
 
 /* Tools */
-.toolBtn {
+/* Tools */
+.drawToolbar {
+  display: flex;
+  justify-content: space-between;
+  background-color: #333;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  gap: 10px;
+}
+
+.iconBtn {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
+  justify-content: center;
   padding: 12px;
-  background-color: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  margin-bottom: 10px;
+  background-color: #222;
+  border: 1px solid #444;
+  border-radius: 4px;
   cursor: pointer;
-  text-align: left;
-  font-size: 0.9rem;
-  transition: all 0.1s;
-}
-
-.toolBtn:hover {
-  background-color: #f5f5f5;
-  border-color: #ccc;
-}
-
-.toolBtnActive {
-  border-color: #0070f3;
-  background-color: #f0f7ff;
-  color: #0070f3;
-}
-
-.toolIcon {
+  transition: all 0.2s;
+  color: #ccc;
   font-size: 1.2rem;
 }
+
+.iconBtn:hover {
+  background-color: #333;
+  color: white;
+}
+
+.iconBtnActive {
+  background-color: #333;
+  border-color: #a4c639;
+  color: #a4c639;
+  box-shadow: 0 0 5px rgba(164, 198, 57, 0.3);
+}
+
+.toolBtn {
+  /* Deprecated - kept for reference or legacy */
+  display: none;
+}
+
 
 .compactTimelineDate {
   font-size: 0.85rem;
@@ -646,4 +808,144 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   cursor: pointer;
   z-index: 10;
+}
+
+/* Navbar Styles - Restored */
+.navbar {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(10px);
+  padding: 10px 20px;
+  border-radius: 50px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  width: 90%;
+  max-width: 1200px;
+  justify-content: space-between;
+}
+
+.brand {
+  font-size: 18px;
+  font-weight: 700;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.navToolbar {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-left: 20px;
+  padding-left: 20px;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.navIconBtn {
+  background: black;
+  /* Black circle */
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.navIconBtn svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.5;
+}
+
+.navIconBtn:hover,
+.navIconBtnActive {
+  background: #222;
+  color: #fff;
+  border-color: #fff;
+  transform: scale(1.1);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.searchContainer {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 5px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.searchBar {
+  background: transparent;
+  border: none;
+  color: white;
+  outline: none;
+  width: 200px;
+}
+
+.searchIcon {
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+.timelineContainer {
+  display: flex !important;
+  align-items: center;
+}
+
+.timelineNav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: 15px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 5px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.navBtn {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.navBtn:hover:not(:disabled) {
+  background: white;
+  color: black;
+}
+
+.navBtn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.navDate {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: white;
+  min-width: 80px;
+  text-align: center;
 }
