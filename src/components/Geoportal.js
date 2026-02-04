@@ -53,6 +53,19 @@ export default function Geoportal() {
     const [analysisResult, setAnalysisResult] = useState(null);
     const [selectedMonitorImage, setSelectedMonitorImage] = useState(null);
 
+    // Scroll to most recent dates when timeline opens
+    useEffect(() => {
+        if (showTimeline && timelineScrollRef.current && groupedImages.length > 0) {
+            // Minimal delay to allow DOM to calculate scrollWidth
+            const timer = setTimeout(() => {
+                if (timelineScrollRef.current) {
+                    timelineScrollRef.current.scrollLeft = timelineScrollRef.current.scrollWidth;
+                }
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [showTimeline, groupedImages.length]);
+
     // Timeline Drag Handlers
     const handleTimelineMouseDown = (e) => {
         if (!timelineScrollRef.current) return;
