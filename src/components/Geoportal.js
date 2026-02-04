@@ -1211,7 +1211,36 @@ export default function Geoportal() {
         if (!images || images.length === 0) return [];
         // Disable aggregation - show all images as requested
         return images;
-    }, [images, windowWidth]);
+    }, [images]);
+
+    const timelineTrackStyle = useMemo(() => {
+        if (groupedImages.length < 2) return { minWidth: '100%' };
+
+        try {
+            const start = new Date(groupedImages[0].date);
+            const end = new Date(groupedImages[groupedImages.length - 1].date);
+
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+                return { minWidth: '100%' };
+            }
+
+            const diffDays = (end - start) / (1000 * 60 * 60 * 24);
+            // 6 months is approx 180 days. 
+            const scale = Math.max(1, diffDays / 180);
+            return { width: `${80 * scale}vw`, minWidth: '100%' };
+        } catch (e) {
+            console.error("Error calculating timeline track width:", e);
+            return { minWidth: '100%' };
+        }
+    }, [groupedImages]);
+
+    const timelineLabelStep = useMemo(() => {
+        if (groupedImages.length === 0) return 1;
+        const availableWidth = (windowWidth || 1000) * 0.8;
+        const minLabelWidth = 80;
+        const maxLabels = Math.floor(availableWidth / minLabelWidth) || 1;
+        return Math.max(1, Math.ceil(groupedImages.length / maxLabels));
+    }, [groupedImages.length, windowWidth]);
     // Re-run when images change or window resizes
 
 
@@ -1806,49 +1835,32 @@ export default function Geoportal() {
                             >
                                 <div
                                     className={styles.timelineTrack}
-                                    style={(() => {
-                                        if (groupedImages.length < 2) return {};
-                                        // Calculate range in days
-                                        const start = new Date(groupedImages[0].date);
-                                        const end = new Date(groupedImages[groupedImages.length - 1].date);
-                                        const diffDays = (end - start) / (1000 * 60 * 60 * 24);
-                                        // 6 months is approx 180 days. 
-                                        // We want 180 days to correspond to approx windowWidth * 0.8.
-                                        const scale = Math.max(1, diffDays / 180);
-                                        return { width: `${80 * scale}vw`, minWidth: '100%' };
-                                    })()}
+                                    style={timelineTrackStyle}
                                 >
-                                    {(() => {
-                                        const availableWidth = windowWidth * 0.8;
-                                        const minLabelWidth = 80;
-                                        const maxLabels = Math.floor(availableWidth / minLabelWidth);
-                                        const labelStep = Math.max(1, Math.ceil(groupedImages.length / maxLabels));
-
-                                        return groupedImages.map((img, index) => (
+                                    {groupedImages.map((img, index) => (
+                                        <div
+                                            key={img.id}
+                                            className={styles.timelineItem}
+                                            onClick={() => handleTimelineClick(img, isCompareMode ? 'right' : 'single')}
+                                        >
                                             <div
-                                                key={img.id}
-                                                className={styles.timelineItem}
-                                                onClick={() => handleTimelineClick(img, isCompareMode ? 'right' : 'single')}
-                                            >
-                                                <div
-                                                    className={`
-                                                        ${styles.timelineDot} 
-                                                        ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
-                                                        ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
-                                                        ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
-                                                    `}
-                                                    style={{ backgroundColor: getDotColor(img.cloud) }}
-                                                ></div>
+                                                className={`
+                                                    ${styles.timelineDot} 
+                                                    ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
+                                                    ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
+                                                    ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
+                                                `}
+                                                style={{ backgroundColor: getDotColor(img.cloud) }}
+                                            ></div>
 
-                                                <div className={`
-                                                    ${styles.timelineDatePill}
-                                                    ${index % labelStep === 0 ? styles.visibleLabel : ''}
-                                                `}>
-                                                    {img.date}
-                                                </div>
+                                            <div className={`
+                                                ${styles.timelineDatePill}
+                                                ${index % timelineLabelStep === 0 ? styles.visibleLabel : ''}
+                                            `}>
+                                                {img.date}
                                             </div>
-                                        ));
-                                    })()}
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         </div>
