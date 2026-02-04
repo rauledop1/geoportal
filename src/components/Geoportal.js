@@ -464,7 +464,11 @@ export default function Geoportal() {
 
                         for (const other of others) {
                             try {
-                                const diff = turf.difference(turf.featureCollection([currentGeometry, other]));
+                                // Clean up geometry with buffer(0) to fix self-intersections
+                                const cleanedCurrent = turf.buffer(currentGeometry, 0);
+                                const cleanedOther = turf.buffer(other, 0);
+
+                                const diff = turf.difference(cleanedCurrent, cleanedOther);
                                 if (diff) {
                                     currentGeometry = diff;
                                     clipped = true;
@@ -475,7 +479,7 @@ export default function Geoportal() {
                                     break;
                                 }
                             } catch (err) {
-                                console.warn("Clipping error", err);
+                                console.warn("Clipping error in Autocomplete", err);
                             }
                         }
 
@@ -516,25 +520,30 @@ export default function Geoportal() {
                     let cutPerformed = false;
 
                     targets.forEach(target => {
-                        const diff = turf.difference(turf.featureCollection([target, cutterPoly]));
+                        try {
+                            const cleanedTarget = turf.buffer(target, 0);
+                            const diff = turf.difference(cleanedTarget, cutterPoly);
 
-                        if (diff) {
-                            idsToDelete.push(target.id);
-                            if (diff.geometry.type === 'MultiPolygon') {
-                                diff.geometry.coordinates.forEach(coords => {
-                                    newFeatures.push({
-                                        type: 'Feature',
-                                        properties: target.properties,
-                                        geometry: {
-                                            type: 'Polygon',
-                                            coordinates: coords
-                                        }
+                            if (diff) {
+                                idsToDelete.push(target.id);
+                                if (diff.geometry.type === 'MultiPolygon') {
+                                    diff.geometry.coordinates.forEach(coords => {
+                                        newFeatures.push({
+                                            type: 'Feature',
+                                            properties: target.properties,
+                                            geometry: {
+                                                type: 'Polygon',
+                                                coordinates: coords
+                                            }
+                                        });
                                     });
-                                });
-                            } else {
-                                newFeatures.push(diff);
+                                } else {
+                                    newFeatures.push(diff);
+                                }
+                                cutPerformed = true;
                             }
-                            cutPerformed = true;
+                        } catch (err) {
+                            console.warn("Cut error for target", target.id, err);
                         }
                     });
 
