@@ -1153,84 +1153,12 @@ export default function Geoportal() {
         return `rgb(${val}, ${val}, ${val})`;
     };
 
-    // Timeline Aggregation Logic
     const groupedImages = useMemo(() => {
         if (!images || images.length === 0) return [];
-
-        // Density Calculation
-        // Available width approx 75% of screen
-        const availableWidth = windowWidth * 0.75;
-        const itemWidth = 60; // Approximate width of a timeline item (dot + margin)
-        const maxItems = Math.floor(availableWidth / itemWidth);
-
-        // Counts
-        const totalImages = images.length;
-
-        // Calculate distinct months and years to check counts
-        const uniqueMonths = new Set(images.map(img => img.date.substring(0, 7))).size;
-        const uniqueYears = new Set(images.map(img => img.date.substring(0, 4))).size;
-
-        // Determine Mode
-        let mode = 'day';
-
-        if (totalImages <= maxItems) {
-            mode = 'day';
-        } else if (uniqueMonths <= maxItems) {
-            mode = 'month';
-        } else if (uniqueYears <= maxItems) {
-            mode = 'year';
-        } else {
-            mode = 'lustrum';
-        }
-
-        console.log(`Timeline Density: Width ${windowWidth}px -> Max Items ${maxItems}. Counts: Img ${totalImages}, Mo ${uniqueMonths}, Yr ${uniqueYears} -> Mode: ${mode}`);
-
-        if (mode === 'day') return images;
-
-        const groups = {};
-
-        images.forEach(img => {
-            const date = new Date(img.date);
-            const year = date.getFullYear();
-            let key;
-
-            if (mode === 'lustrum') {
-                // block of 5 years: 2020-2024, 2025-2029
-                const lustrumStart = Math.floor(year / 5) * 5;
-                const lustrumEnd = lustrumStart + 4;
-                key = `${lustrumStart}-${lustrumEnd}`;
-            }
-            else if (mode === 'year') {
-                key = year.toString();
-            }
-            else if (mode === 'month') {
-                key = `${year}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            }
-            else {
-                key = img.id; // Fallback
-            }
-
-            if (!groups[key]) {
-                groups[key] = {
-                    id: key, // Use key as ID for group
-                    date: key, // Display label
-                    cloud: 0,
-                    count: 0,
-                    images: []
-                };
-            }
-            groups[key].cloud += img.cloud;
-            groups[key].count++;
-            groups[key].images.push(img);
-        });
-
-        return Object.values(groups).map(g => ({
-            ...g,
-            cloud: g.cloud / g.count, // Average cloud
-            isGroup: true
-        })).sort((a, b) => a.date.localeCompare(b.date)); // Ensure sorted
-
-    }, [images, windowWidth]); // Re-run when images change or window resizes
+        // Disable aggregation - show all images as requested
+        return images;
+    }, [images, windowWidth]);
+    // Re-run when images change or window resizes
 
 
     // Auto-Update Effects
@@ -1827,21 +1755,6 @@ export default function Geoportal() {
                                         className={styles.timelineItem}
                                         onClick={() => !isCompareMode && handleTimelineClick(img, 'single')}
                                     >
-                                        <div className={styles.timelinePopover}>
-                                            <div className={styles.popoverInfo}>
-                                                <b>{img.date}</b><br />
-                                                {Math.round(img.cloud)}% Clouds
-                                                {img.isGroup && <><br /><small>({img.count} items)</small></>}
-                                            </div>
-
-                                            {isCompareMode && (
-                                                <div className={styles.popoverRow}>
-                                                    <button className={styles.popoverBtn} onClick={(e) => { e.stopPropagation(); handleTimelineClick(img, 'left'); }}>Left</button>
-                                                    <button className={styles.popoverBtn} onClick={(e) => { e.stopPropagation(); handleTimelineClick(img, 'right'); }}>Right</button>
-                                                </div>
-                                            )}
-                                        </div>
-
                                         <div
                                             className={`
                         ${styles.timelineDot} 
