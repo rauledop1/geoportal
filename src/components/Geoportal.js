@@ -32,6 +32,12 @@ export default function Geoportal() {
     const marker = useRef(null);
     const draw = useRef(null);
     const viewState = useRef({ center: [-71.5, -33.5], zoom: 8 });
+    const timelineScrollRef = useRef(null);
+
+    // Timeline Drag State
+    const [isDragging, setIsDragging] = useState(false);
+    const [startX, setStartX] = useState(0);
+    const [scrollLeft, setScrollLeft] = useState(0);
 
     // UI State
     const [isExplorerOpen, setIsExplorerOpen] = useState(false);
@@ -46,6 +52,41 @@ export default function Geoportal() {
     const [baselineYear, setBaselineYear] = useState('');
     const [analysisResult, setAnalysisResult] = useState(null);
     const [selectedMonitorImage, setSelectedMonitorImage] = useState(null);
+
+    // Timeline Drag Handlers
+    const handleTimelineMouseDown = (e) => {
+        if (!timelineScrollRef.current) return;
+        setIsDragging(true);
+        setStartX(e.pageX - timelineScrollRef.current.offsetLeft);
+        setScrollLeft(timelineScrollRef.current.scrollLeft);
+    };
+
+    const handleTimelineMouseMove = (e) => {
+        if (!isDragging || !timelineScrollRef.current) return;
+        e.preventDefault();
+        const x = e.pageX - timelineScrollRef.current.offsetLeft;
+        const walk = (x - startX) * 2; // scroll speed
+        timelineScrollRef.current.scrollLeft = scrollLeft - walk;
+    };
+
+    const handleTimelineMouseUp = () => {
+        setIsDragging(false);
+    };
+
+    // Touch support
+    const handleTimelineTouchStart = (e) => {
+        if (!timelineScrollRef.current) return;
+        setIsDragging(true);
+        setStartX(e.touches[0].pageX - timelineScrollRef.current.offsetLeft);
+        setScrollLeft(timelineScrollRef.current.scrollLeft);
+    };
+
+    const handleTimelineTouchMove = (e) => {
+        if (!isDragging || !timelineScrollRef.current) return;
+        const x = e.touches[0].pageX - timelineScrollRef.current.offsetLeft;
+        const walk = (x - startX) * 2;
+        timelineScrollRef.current.scrollLeft = scrollLeft - walk;
+    };
 
     // Geomorphology State
     const [selectedGeomComuna, setSelectedGeomComuna] = useState('');
@@ -1716,24 +1757,14 @@ export default function Geoportal() {
                         {/* Only show if images exist */}
                         {groupedImages.length > 0 && !showTimeline && (
                             <button
+                                className={styles.timelineToggleBtn}
                                 onClick={() => setShowTimeline(true)}
-                                style={{
-                                    background: 'white',
-                                    color: '#333',
-                                    border: 'none',
-                                    borderRadius: '50%',
-                                    width: '40px',
-                                    height: '40px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                    cursor: 'pointer',
-                                    fontSize: '18px'
-                                }}
                                 title="Show Timeline"
                             >
-                                ↺
+                                <span style={{ marginRight: '8px' }}>📅</span>
+                                <span className={styles.compactTimelineDate}>
+                                    {activeLayerId ? (groupedImages.find(img => img.id === activeLayerId)?.date || 'Cargando...') : 'Seleccionar imagen'}
+                                </span>
                             </button>
                         )}
                     </div>
@@ -1749,8 +1780,31 @@ export default function Geoportal() {
                                 ✕
                             </button>
 
-                            <div className={`${styles.timelineScroll} ${groupedImages.length * 15 > windowWidth ? styles.timelineScrollOverflow : ''}`}>
-                                <div className={styles.timelineTrack}>
+                            <div
+                                ref={timelineScrollRef}
+                                className={`${styles.timelineScroll} ${groupedImages.length * 15 > windowWidth ? styles.timelineScrollOverflow : ''} ${isDragging ? styles.isDragging : ''}`}
+                                onMouseDown={handleTimelineMouseDown}
+                                onMouseMove={handleTimelineMouseMove}
+                                onMouseUp={handleTimelineMouseUp}
+                                onMouseLeave={handleTimelineMouseUp}
+                                onTouchStart={handleTimelineTouchStart}
+                                onTouchMove={handleTimelineTouchMove}
+                                onTouchEnd={handleTimelineMouseUp}
+                            >
+                                <div
+                                    className={styles.timelineTrack}
+                                    style={(() => {
+                                        if (groupedImages.length < 2) return {};
+                                        // Calculate range in days
+                                        const start = new Date(groupedImages[0].date);
+                                        const end = new Date(groupedImages[groupedImages.length - 1].date);
+                                        const diffDays = (end - start) / (1000 * 60 * 60 * 24);
+                                        // 6 months is approx 180 days. 
+                                        // We want 180 days to correspond to approx windowWidth * 0.8.
+                                        const scale = Math.max(1, diffDays / 180);
+                                        return { width: `${80 * scale}vw`, minWidth: '100%' };
+                                    })()}
+                                >
                                     {(() => {
                                         const availableWidth = windowWidth * 0.8;
                                         const minLabelWidth = 80;

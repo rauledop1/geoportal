@@ -358,8 +358,14 @@
 .timelineScrollOverflow {
   overflow-x: auto !important;
   justify-content: flex-start !important;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  /* Hide scrollbar for wheel feel */
   scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  cursor: grab;
+}
+
+.timelineScroll.isDragging {
+  cursor: grabbing;
 }
 
 .timelineScrollOverflow::-webkit-scrollbar {
@@ -614,4 +620,28 @@
 
 .toolIcon {
   font-size: 1.2rem;
+}
+.compactTimelineDate {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px 12px;
+  border-radius: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.timelineToggleBtn {
+  display: flex !important;
+  align-items: center !important;
+  width: auto !important;
+  padding: 0 15px !important;
+  border-radius: 30px !important;
+  background: white;
+  color: #333;
+  border: none;
+  height: 40px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  cursor: pointer;
+  z-index: 10;
 }
