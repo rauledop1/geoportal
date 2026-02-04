@@ -579,10 +579,18 @@ export default function Geoportal() {
     // Initialize Map(s) based on mode
     useEffect(() => {
         // Cleanup previous maps
-        if (map.current) map.current.remove();
-        if (compare.current) compare.current.remove();
-        if (mapLeft.current) mapLeft.current.remove();
-        if (mapRight.current) mapRight.current.remove();
+        if (map.current) {
+            try { map.current.remove(); } catch (e) { console.warn("Error removing map", e); }
+        }
+        if (compare.current) {
+            try { compare.current.remove(); } catch (e) { console.warn("Error removing compare", e); }
+        }
+        if (mapLeft.current) {
+            try { mapLeft.current.remove(); } catch (e) { console.warn("Error removing mapLeft", e); }
+        }
+        if (mapRight.current) {
+            try { mapRight.current.remove(); } catch (e) { console.warn("Error removing mapRight", e); }
+        }
 
         map.current = null;
         mapLeft.current = null;
