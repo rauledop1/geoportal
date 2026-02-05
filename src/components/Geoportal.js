@@ -13,7 +13,7 @@ import shp from "shpjs";
 import JSZip from "jszip";
 import { kml } from "@tmcw/togeojson";
 import * as turf from "@turf/turf";
-import { IconPolygon, IconCut, IconMagnet, IconTrash } from './Icons';
+import { IconPolygon, IconCut, IconMagnet, IconTrash, IconLine, IconPoint, IconDownload } from './Icons';
 import {
     SnapPolygonMode,
     SnapLineMode,
@@ -53,6 +53,15 @@ export default function Geoportal() {
     const [baselineYear, setBaselineYear] = useState('');
     const [analysisResult, setAnalysisResult] = useState(null);
     const [selectedMonitorImage, setSelectedMonitorImage] = useState(null);
+
+    // Layers Panel State
+    const [isLayersOpen, setIsLayersOpen] = useState(true);
+    const [permanentLayers, setPermanentLayers] = useState([]);
+    const [searchLayers, setSearchLayers] = useState([]);
+    const [drawnPolygons, setDrawnPolygons] = useState([]); // [{id, name, visible, geometry}]
+    const [featureModal, setFeatureModal] = useState({ show: false, id: null, position: null, isEditable: false });
+    const [editingGeometryId, setEditingGeometryId] = useState(null); // ID of feature being extended with new parts
+    const nextPolyId = useRef(1);
 
 
 
@@ -336,9 +345,10 @@ export default function Geoportal() {
     const [snapPixelDistance, setSnapPixelDistance] = useState(15);
     const [eraseOverlap, setEraseOverlap] = useState(false); // Autocomplete / Erase Overlap
     const drawModeRef = useRef(drawMode);
-    useEffect(() => {
-        drawModeRef.current = drawMode;
-    }, [drawMode]);
+    useEffect(() => { drawModeRef.current = drawMode; }, [drawMode]);
+
+    const editingGeometryIdRef = useRef(editingGeometryId);
+    useEffect(() => { editingGeometryIdRef.current = editingGeometryId; }, [editingGeometryId]);
 
     const [cloudCover, setCloudCover] = useState(60);
     const [sensor, setSensor] = useState("Sentinel Harmonized");
@@ -358,6 +368,11 @@ export default function Geoportal() {
     // Layer Opacity State
     const [layerOpacity, setLayerOpacity] = useState(100);
     const [minTreeHeight, setMinTreeHeight] = useState(0);
+
+    // Crop Monitoring Selectors
+    const [cropT1, setCropT1] = useState(null);
+    const [cropT2, setCropT2] = useState(null);
+    const [cropSelectionMode, setCropSelectionMode] = useState('slave'); // 'master' or 'slave'
 
     // Analysis statesConfiguration
     const drawOptions = useMemo(() => ({
@@ -381,103 +396,86 @@ export default function Geoportal() {
         },
         controls: {}, // Hide all default controls
         styles: [
-            // ACTIVE (being drawn)
-            // line stroke
+            // 1. Polygon Fill (Active)
             {
-                "id": "gl-draw-line",
-                "type": "line",
-                "filter": ["all", ["==", "$type", "LineString"], ["!=", "mode", "static"]],
-                "layout": {
-                    "line-cap": "round",
-                    "line-join": "round"
-                },
-                "paint": {
-                    "line-color": "#D20C0C",
-                    "line-dasharray": [0.2, 2],
-                    "line-width": 2
-                }
-            },
-            // polygon fill
-            {
-                "id": "gl-draw-polygon-fill",
+                "id": "gl-draw-polygon-fill-active",
                 "type": "fill",
                 "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
                 "paint": {
-                    "fill-color": "#D20C0C",
-                    "fill-outline-color": "#D20C0C",
+                    "fill-color": "#3b82f6",
+                    "fill-outline-color": "#3b82f6",
                     "fill-opacity": 0.1
                 }
             },
-            // polygon mid points
+            // 2. Active Line Stroke (Covers LineStrings and Polygons while drawing)
             {
-                "id": "gl-draw-polygon-midpoint",
-                "type": "circle",
-                "filter": ["all",
-                    ["==", "$type", "Point"],
-                    ["==", "meta", "midpoint"]],
-                "paint": {
-                    "circle-radius": 5, // Larger
-                    "circle-color": "#fbb03b"
-                }
-            },
-            // polygon outline stroke
-            // This doesn't style the first edge of the polygon, which uses the line stroke.
-            {
-                "id": "gl-draw-polygon-stroke-active",
+                "id": "gl-draw-line-active",
                 "type": "line",
-                "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
+                "filter": ["all", ["!=", "mode", "static"]],
                 "layout": {
                     "line-cap": "round",
                     "line-join": "round"
                 },
                 "paint": {
-                    "line-color": "#D20C0C",
-                    "line-dasharray": [0.2, 2],
-                    "line-width": 2
+                    "line-color": "#3b82f6",
+                    "line-width": 3
                 }
             },
-            // vertex point halos
-            {
-                "id": "gl-draw-polygon-and-line-vertex-halo-active",
-                "type": "circle",
-                "filter": ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"], ["!=", "mode", "static"]],
-                "paint": {
-                    "circle-radius": 8, // Larger halo
-                    "circle-color": "#FFF"
-                }
-            },
-            // vertex points
-            {
-                "id": "gl-draw-polygon-and-line-vertex-active",
-                "type": "circle",
-                "filter": ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"], ["!=", "mode", "static"]],
-                "paint": {
-                    "circle-radius": 6, // Larger vertex
-                    "circle-color": "#D20C0C",
-                }
-            },
-            // INACTIVE (static)
+            // 3. Static Polygon Fill (Respects user_hidden)
             {
                 "id": "gl-draw-polygon-fill-static",
                 "type": "fill",
-                "filter": ["all", ["==", "$type", "Polygon"], ["==", "mode", "static"]],
+                "filter": ["all", ["==", "$type", "Polygon"], ["==", "mode", "static"], ["!=", ["get", "user_hidden"], "true"]],
                 "paint": {
-                    "fill-color": "#000",
-                    "fill-outline-color": "#000",
-                    "fill-opacity": 0.1
+                    "fill-color": "#3b82f6",
+                    "fill-opacity": 0.05
                 }
             },
+            // 4. Static Lines (Respects user_hidden)
             {
-                "id": "gl-draw-polygon-stroke-static",
+                "id": "gl-draw-line-static",
                 "type": "line",
-                "filter": ["all", ["==", "$type", "Polygon"], ["==", "mode", "static"]],
+                "filter": ["all", ["==", "mode", "static"], ["!=", ["get", "user_hidden"], "true"]],
                 "layout": {
                     "line-cap": "round",
                     "line-join": "round"
                 },
                 "paint": {
-                    "line-color": "#000",
-                    "line-width": 2
+                    "line-color": "#3b82f6",
+                    "line-width": 2,
+                    "line-opacity": 0.5
+                }
+            },
+            // 5. Active Vertices / Nodes
+            {
+                "id": "gl-draw-point-active",
+                "type": "circle",
+                "filter": ["all", ["==", "$type", "Point"], ["!=", "mode", "static"]],
+                "paint": {
+                    "circle-radius": 7,
+                    "circle-color": "#3b82f6",
+                    "circle-stroke-width": 2,
+                    "circle-stroke-color": "#fff"
+                }
+            },
+            // 6. Midpoints
+            {
+                "id": "gl-draw-point-midpoint",
+                "type": "circle",
+                "filter": ["all", ["==", "$type", "Point"], ["==", "meta", "midpoint"]],
+                "paint": {
+                    "circle-radius": 5,
+                    "circle-color": "#3b82f6"
+                }
+            },
+            // 7. Static Point (Respects user_hidden)
+            {
+                "id": "gl-draw-point-static",
+                "type": "circle",
+                "filter": ["all", ["==", "$type", "Point"], ["==", "mode", "static"], ["!=", ["get", "user_hidden"], "true"]],
+                "paint": {
+                    "circle-radius": 5,
+                    "circle-color": "#3b82f6"
                 }
             }
         ]
@@ -490,6 +488,35 @@ export default function Geoportal() {
 
     // Helper for Draw Creation (Geometry Update + Cut Logic + Autocomplete)
     const handleDrawCreate = (e, currentDrawControl) => {
+        const feature = e.features[0];
+
+        // 0. Append to existing geometry if in edit mode
+        if (editingGeometryIdRef.current && e.type === 'draw.create' && drawModeRef.current !== 'cut') {
+            const target = currentDrawControl.get(editingGeometryIdRef.current);
+            if (target && feature.id !== target.id) {
+                try {
+                    const union = turf.union(target, feature);
+                    if (union) {
+                        currentDrawControl.add(union);
+                        currentDrawControl.setFeatureProperty(union.id, 'auto_id', target.properties.auto_id);
+                        currentDrawControl.setFeatureProperty(union.id, 'custom_fields', target.properties.custom_fields);
+                        currentDrawControl.delete([feature.id]);
+                        updateDrawnPolygons(currentDrawControl);
+
+                        // STAY in draw mode to allow adding more parts, as requested
+                        setTimeout(() => {
+                            const mode = target.geometry.type.includes('Polygon') ? 'draw_polygon' :
+                                target.geometry.type.includes('LineString') ? 'draw_line_string' : 'draw_point';
+                            currentDrawControl.changeMode(mode);
+                        }, 100);
+                        return;
+                    }
+                } catch (err) {
+                    console.warn("Union failed", err);
+                }
+            }
+        }
+
         // 1. Autocomplete / Erase Overlap
         if (eraseOverlap && (e.type === 'draw.create' || e.type === 'draw.update')) {
             setTimeout(() => {
@@ -573,17 +600,14 @@ export default function Geoportal() {
 
                                 if (diff) {
                                     idsToDelete.push(target.id);
-                                    if (diff.geometry.type === 'MultiPolygon') {
-                                        diff.geometry.coordinates.forEach(coords => {
-                                            newFeatures.push({
-                                                type: 'Feature',
-                                                properties: target.properties,
-                                                geometry: { type: 'Polygon', coordinates: coords }
-                                            });
-                                        });
-                                    } else {
-                                        newFeatures.push(diff);
-                                    }
+                                    // Maintain as a single feature (could be MultiPolygon)
+                                    const feature = {
+                                        type: 'Feature',
+                                        id: target.id, // Keep the same ID
+                                        properties: target.properties,
+                                        geometry: diff.geometry
+                                    };
+                                    newFeatures.push(feature);
                                     cutPerformed = true;
                                 }
                             } catch (err) {
@@ -614,12 +638,41 @@ export default function Geoportal() {
             }
         }
 
-        // 3. Update Geometry State
+        // 3. Update Geometry State & Trigger Modal
         setTimeout(() => {
             const finalData = currentDrawControl.getAll();
             if (finalData.features.length > 0) {
                 const lastFeature = finalData.features[finalData.features.length - 1];
                 setGeometry(lastFeature.geometry);
+
+                // Trigger Modal for NEW features (not during cut)
+                if (e.type === 'draw.create' && drawModeRef.current !== 'cut') {
+                    let point;
+                    try {
+                        const centroid = turf.centroid(lastFeature);
+                        point = centroid.geometry.coordinates;
+                    } catch (err) {
+                        // Fallback to first point
+                        point = lastFeature.geometry.type === 'Point'
+                            ? lastFeature.geometry.coordinates
+                            : lastFeature.geometry.coordinates[0][0] || lastFeature.geometry.coordinates[0];
+                    }
+
+                    if (point && map.current) {
+                        const pos = map.current.project(point);
+                        setFeatureModal({
+                            show: true,
+                            id: lastFeature.id,
+                            position: pos,
+                            autoId: nextPolyId.current++,
+                            isEditable: true
+                        });
+                        // Automatically set the ID in properties
+                        currentDrawControl.setFeatureProperty(lastFeature.id, 'auto_id', nextPolyId.current - 1);
+                        // Also update state list name if possible
+                        updateDrawnPolygons(currentDrawControl);
+                    }
+                }
             } else {
                 setGeometry(null);
             }
@@ -802,9 +855,46 @@ export default function Geoportal() {
 
             const updateGeometryFromDraw = (e) => handleDrawCreate(e, drawControl);
 
-            map.current.on('draw.create', updateGeometryFromDraw);
-            map.current.on('draw.delete', updateGeometryFromDraw);
-            map.current.on('draw.update', updateGeometryFromDraw);
+            map.current.on('draw.create', (e) => {
+                updateGeometryFromDraw(e);
+                updateDrawnPolygons(draw.current);
+            });
+            map.current.on('draw.selectionchange', () => {
+                const selected = draw.current.getSelected();
+                if (selected.features.length === 1) {
+                    const feature = selected.features[0];
+                    const centroid = turf.centroid(feature);
+                    const pos = map.current.project(centroid.geometry.coordinates);
+
+                    setFeatureModal(prev => ({
+                        ...prev,
+                        show: true,
+                        id: feature.id,
+                        position: pos,
+                        autoId: feature.properties.auto_id,
+                        isEditable: prev.id === feature.id ? prev.isEditable : false // Reset to read-only if new selection
+                    }));
+                } else if (selected.features.length === 0) {
+                    setFeatureModal(prev => ({ ...prev, show: false }));
+                    setEditingGeometryId(null);
+                }
+            });
+
+            map.current.on('click', (e) => {
+                // Check if click was on a feature but NOT in a drawing mode
+                const currentMode = draw.current.getMode();
+                if (currentMode === 'simple_select' || currentMode === 'direct_select') {
+                    // Logic handled by selectionchange above for cleaner integration
+                }
+            });
+            map.current.on('draw.update', (e) => {
+                updateGeometryFromDraw(e);
+                updateDrawnPolygons(draw.current);
+            });
+            map.current.on('draw.delete', (e) => {
+                updateGeometryFromDraw(e);
+                updateDrawnPolygons(draw.current);
+            });
 
 
             // Initial snap state
@@ -946,7 +1036,6 @@ export default function Geoportal() {
                 if (currentDrawData.features.length === 0) {
                     draw.current.add(geometry);
                 } else {
-                    // Check if same?
                     // If the geometry came from draw event, we don't re-add.
                     // The event handler calls setGeometry.
                     // But if geometry came from Upload, we MUST add.
@@ -1101,10 +1190,22 @@ export default function Geoportal() {
     };
 
     const handleSearch = async () => {
-        if (!geometry) {
-            setError("Please select a location on the map first (click on map).");
+        let searchGeom = geometry;
+
+        // If no geometry specified, use map center
+        if (!searchGeom && map.current) {
+            const center = map.current.getCenter();
+            searchGeom = {
+                type: 'Point',
+                coordinates: [center.lng, center.lat]
+            };
+        }
+
+        if (!searchGeom) {
+            setError("No se pudo determinar una ubicación para la búsqueda.");
             return;
         }
+
         setError(null);
         setLoading(true);
         setImages([]);
@@ -1120,7 +1221,7 @@ export default function Geoportal() {
                     cloudCover,
                     sensor,
                     visOption,
-                    geometry
+                    geometry: searchGeom
                 })
             });
 
@@ -1220,7 +1321,306 @@ export default function Geoportal() {
         }
     };
 
-    // ... handleLayerAdd ...
+    useEffect(() => {
+        syncLayerOrder();
+    }, [searchLayers, permanentLayers]);
+
+    const getSummarizedName = (sensorName, imageId, visOpt) => {
+        let code = sensorName;
+        if (sensorName.includes("Sentinel Harmonized")) code = "S2H";
+        else if (sensorName.includes("Sentinel-1")) code = "S1";
+        else if (sensorName.includes("Landsat")) code = "LS";
+        else if (sensorName.includes("Combined")) code = "COMB";
+        else if (sensorName.includes("Canopy Height")) code = "CHM";
+        else if (sensorName.includes("Digital Surface Model")) code = "DSM";
+
+        let nick = "";
+        if (visOpt === "Wildfire" || visOpt === "Wildfire Monitoring") nick = "FIRE";
+        else if (visOpt === "Vegetation Change") nick = "DNDVI";
+        else if (visOpt === "Crop Monitoring") nick = "CROP";
+        else if (visOpt === "NDVI") nick = "NDVI";
+        else if (visOpt === "NDWI") nick = "NDWI";
+        else if (visOpt === "True Color" || visOpt === "True Color (RGB)") nick = "RGB";
+        else if (visOpt === "False Color (Infrared)") nick = "IR";
+        else if (visOpt === "Radar Vegetation Index (RVI)") nick = "RVI";
+        else if (visOpt === "Radar Soil Moisture") nick = "SSM";
+
+        const namePart = nick ? `${code} ${nick}` : code;
+
+        // Extract date if possible (YYYY-MM-DD)
+        const dateMatch = imageId.match(/\d{4}-\d{2}-\d{2}/);
+        if (dateMatch) return `${namePart} ${dateMatch[0]}`;
+
+        // Alternative date format YYYYMMDD
+        const dateMatchBrief = imageId.match(/\d{8}/);
+        if (dateMatchBrief) {
+            const d = dateMatchBrief[0];
+            return `${namePart} ${d.substring(0, 4)}-${d.substring(4, 6)}-${d.substring(6, 8)}`;
+        }
+
+        if (imageId.includes("Static")) return `${namePart} (Mosaic)`;
+
+        return `${namePart} ${imageId.split('/').pop()}`;
+    };
+
+    const handleDrawLine = () => {
+        setDrawMode('line');
+        setEraseOverlap(false);
+        if (draw.current) draw.current.changeMode('draw_line_string');
+    };
+
+    const handleDrawPoint = () => {
+        setDrawMode('point');
+        setEraseOverlap(false);
+        if (draw.current) draw.current.changeMode('draw_point');
+    };
+
+    const handleDrawPolygon = () => {
+        setDrawMode('simple');
+        setEraseOverlap(false);
+        if (draw.current) draw.current.changeMode('draw_polygon');
+    };
+    const handleEditFeature = (id) => {
+        if (draw.current) {
+            setEditingGeometryId(id);
+            draw.current.changeMode('direct_select', { featureId: id });
+            setActiveTab('draw');
+
+            // Trigger modal in editable mode
+            const feat = draw.current.get(id);
+            if (feat && map.current) {
+                const centroid = turf.centroid(feat);
+                const pos = map.current.project(centroid.geometry.coordinates);
+                setFeatureModal({ show: true, id: id, position: pos, autoId: feat.properties.auto_id, isEditable: true });
+            }
+        }
+    };
+
+    const moveLayerInList = (listType, layerId, direction) => {
+        const setList = listType === 'permanent' ? setPermanentLayers : setSearchLayers;
+        const currentList = listType === 'permanent' ? permanentLayers : searchLayers;
+        const index = currentList.findIndex(l => l.id === layerId);
+        if (index === -1) return;
+
+        if (direction === 'up' && index === 0) return;
+        if (direction === 'down' && index === currentList.length - 1) return;
+
+        const newList = [...currentList];
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        const [movedItem] = newList.splice(index, 1);
+        newList.splice(targetIndex, 0, movedItem);
+        setList(newList);
+    };
+
+    const syncLayerOrder = () => {
+        if (!map.current) return;
+        // In the UI, Permanent Layers are listed first (top), then Search Layers.
+        // If "Top of List = Top of Map", we process from bottom of the list to top.
+        const combined = [...searchLayers, ...permanentLayers].reverse();
+
+        combined.forEach(layer => {
+            const layerId = `ee-layer-${layer.id}`;
+            if (map.current.getLayer(layerId)) {
+                // Moving a layer without a 'beforeId' puts it on top of all others
+                map.current.moveLayer(layerId);
+            }
+        });
+
+        // Ensure drawing layers stay on very top
+        const style = map.current.getStyle();
+        if (style && style.layers) {
+            style.layers.forEach(l => {
+                if (l.id.startsWith('gl-draw-')) {
+                    map.current.moveLayer(l.id);
+                }
+            });
+        }
+    };
+
+    const updateLayerOpacity = (layerId, opacity) => {
+        const updateInList = (list) => list.map(l => l.id === layerId ? { ...l, opacity } : l);
+        setPermanentLayers(prev => updateInList(prev));
+        setSearchLayers(prev => updateInList(prev));
+
+        if (map.current && map.current.getLayer(`ee-layer-${layerId}`)) {
+            map.current.setPaintProperty(`ee-layer-${layerId}`, 'raster-opacity', opacity / 100);
+        }
+    };
+
+    const toggleLayerSwipe = (layerId, urlFormat) => {
+        if (!isCompareMode) {
+            setIsCompareMode(true);
+        }
+        setRightLayerId(layerId);
+        handleLayerAdd(layerId, 'right');
+    };
+
+    const updateDrawnPolygonValue = (id, newValue) => {
+        if (newValue.length > 255) return;
+        setDrawnPolygons(prev => prev.map(p => p.id === id ? { ...p, value: newValue } : p));
+        if (draw.current) {
+            draw.current.setFeatureProperty(id, 'user_value', newValue);
+        }
+    };
+
+    const addCustomField = (id) => {
+        setDrawnPolygons(prev => prev.map(p => {
+            if (p.id === id) {
+                const fields = p.fields || [];
+                return { ...p, fields: [...fields, { name: 'Nueva Capa', type: 'string', value: '' }] };
+            }
+            return p;
+        }));
+    };
+
+    const updateCustomField = (featureId, fieldIndex, key, val) => {
+        setDrawnPolygons(prev => prev.map(p => {
+            if (p.id === featureId) {
+                const fields = [...(p.fields || [])];
+                fields[fieldIndex] = { ...fields[fieldIndex], [key]: val };
+                if (draw.current) draw.current.setFeatureProperty(featureId, 'custom_fields', fields);
+                return { ...p, fields };
+            }
+            return p;
+        }));
+    };
+
+    const calculateAreaHa = (geometry) => {
+        try {
+            if (geometry.type.includes('Polygon')) {
+                const areaSqM = turf.area(geometry);
+                return (areaSqM / 10000).toFixed(2);
+            }
+        } catch (e) { return "0.00"; }
+        return "0.00";
+    };
+
+    const calculateLengthKm = (geometry) => {
+        try {
+            if (geometry.type.includes('LineString')) {
+                const lenKm = turf.length(geometry, { units: 'kilometers' });
+                return lenKm.toFixed(1);
+            }
+        } catch (e) { return "0.0"; }
+        return "0.0";
+    };
+
+    // Update Drawn Polygons list from Mapbox Draw
+    const updateDrawnPolygons = (drawControl) => {
+        if (!drawControl) return;
+        const features = drawControl.getAll().features;
+        setDrawnPolygons(prev => {
+            const newPolys = features.map((f, index) => {
+                const existing = prev.find(p => p.id === f.id);
+                let defaultName = `Polygon ${index + 1}`;
+                if (f.geometry.type.includes('LineString')) defaultName = `Line ${index + 1}`;
+                if (f.geometry.type.includes('Point')) defaultName = `Point ${index + 1}`;
+
+                const isLine = f.geometry.type.includes('LineString');
+                const metricValue = isLine ? calculateLengthKm(f.geometry) : calculateAreaHa(f.geometry);
+                const metricLabel = isLine ? 'km' : 'ha';
+
+                return {
+                    id: f.id,
+                    name: existing?.name || defaultName,
+                    auto_id: f.properties?.auto_id || existing?.auto_id || (index + 1),
+                    value: existing?.value || (f.properties?.user_value || ''),
+                    fields: existing?.fields || f.properties?.custom_fields || [],
+                    visible: existing ? existing.visible : true,
+                    geometry: f.geometry,
+                    metricValue: metricValue,
+                    metricLabel: metricLabel,
+                    areaHa: metricValue // keeping for backward compatibility if needed elsewhere
+                };
+            });
+            return newPolys;
+        });
+    };
+
+    const renameDrawnPolygon = (id, newName) => {
+        setDrawnPolygons(prev => prev.map(p => p.id === id ? { ...p, name: newName } : p));
+    };
+
+    const toggleLayerVisibility = (layerId, listType) => {
+        const setList = listType === 'permanent' ? setPermanentLayers : setSearchLayers;
+        const list = listType === 'permanent' ? permanentLayers : searchLayers;
+
+        const updatedList = list.map(l => {
+            if (l.id === layerId) {
+                const newVisible = !l.visible;
+                if (map.current) {
+                    if (newVisible) {
+                        // Re-add layer if it was previously removed but we have urlFormat
+                        if (l.urlFormat && !map.current.getLayer(`ee-layer-${l.id}`)) {
+                            addLayerToMap(l.id, l.urlFormat);
+                        }
+                    } else {
+                        // Hide layer
+                        if (map.current.getLayer(`ee-layer-${l.id}`)) {
+                            map.current.setLayoutProperty(`ee-layer-${l.id}`, 'visibility', 'none');
+                        }
+                    }
+                    // If showing, make sure visibility is 'visible'
+                    if (newVisible && map.current.getLayer(`ee-layer-${l.id}`)) {
+                        map.current.setLayoutProperty(`ee-layer-${l.id}`, 'visibility', 'visible');
+                    }
+                }
+                return { ...l, visible: newVisible };
+            }
+            return l;
+        });
+        setList(updatedList);
+    };
+
+    const addLayerToMap = (id, urlFormat) => {
+        if (!map.current) return;
+        const sourceId = `ee-source-${id}`;
+        const layerId = `ee-layer-${id}`;
+
+        if (map.current.getLayer(layerId)) map.current.removeLayer(layerId);
+        if (map.current.getSource(sourceId)) map.current.removeSource(sourceId);
+
+        map.current.addSource(sourceId, {
+            type: "raster",
+            tiles: [urlFormat],
+            tileSize: 256,
+        });
+
+        const layers = map.current.getStyle().layers;
+        const firstDrawLayer = layers.find(l => l.id.startsWith('gl-draw-'));
+        const beforeId = firstDrawLayer ? firstDrawLayer.id : undefined;
+
+        map.current.addLayer({
+            id: layerId,
+            type: "raster",
+            source: sourceId,
+            minzoom: 0,
+            maxzoom: 22,
+        }, beforeId);
+    };
+
+    const moveLayer = (layerId, fromType, toType) => {
+        const fromList = fromType === 'permanent' ? permanentLayers : searchLayers;
+        const toList = toType === 'permanent' ? permanentLayers : searchLayers;
+        const setFromList = fromType === 'permanent' ? setPermanentLayers : setSearchLayers;
+        const setToList = toType === 'permanent' ? setPermanentLayers : setSearchLayers;
+
+        const layer = fromList.find(l => l.id === layerId);
+        if (!layer) return;
+
+        setFromList(fromList.filter(l => l.id !== layerId));
+        setToList([...toList, layer]);
+    };
+
+    const removeLayerFromList = (layerId) => {
+        setSearchLayers(searchLayers.filter(l => l.id !== layerId));
+        setPermanentLayers(permanentLayers.filter(l => l.id !== layerId));
+
+        if (map.current) {
+            if (map.current.getLayer(`ee-layer-${layerId}`)) map.current.removeLayer(`ee-layer-${layerId}`);
+            if (map.current.getSource(`ee-source-${layerId}`)) map.current.removeSource(`ee-source-${layerId}`);
+        }
+    };
 
     const handleLayerAdd = async (imageId, target = 'single') => {
         setLoading(true);
@@ -1233,7 +1633,9 @@ export default function Geoportal() {
                     imageId,
                     sensor,
                     visOption,
-                    minHeight: minTreeHeight // Pass threshold
+                    minHeight: minTreeHeight, // Pass threshold
+                    t1ImageId: cropT1?.id,
+                    t2ImageId: cropT2?.id
                 })
             });
 
@@ -1242,45 +1644,93 @@ export default function Geoportal() {
 
             console.log("Adding Layer:", { imageId, target, urlFormat });
 
-            const sourceId = "ee-source-" + target;
-            const layerId = "ee-layer-" + target;
+            // Update Layer Lists
+            const displayName = getSummarizedName(sensor, imageId, visOption);
+            const isPermanent = sensor === "Canopy Height (Meta)" || sensor === "Digital Surface Model";
 
-            let targetMap;
-            if (target === 'single') targetMap = map.current;
-            if (target === 'left') targetMap = mapLeft.current;
-            if (target === 'right') targetMap = mapRight.current;
+            // Unique ID per visualization to avoid date collisions
+            const uniqueId = `${imageId}__VIS:${visOption.replace(/\s+/g, '_')}`;
 
-            if (!targetMap) {
-                console.error("Target map not found:", target);
-                return;
+            const newLayer = {
+                id: uniqueId,
+                imageId: imageId, // Original asset ID
+                visOption: visOption, // Store which viz this is
+                name: displayName,
+                visible: true,
+                opacity: 100,
+                urlFormat: urlFormat,
+                type: isPermanent ? 'permanent' : 'search'
+            };
+
+            if (isPermanent) {
+                setPermanentLayers(prev => {
+                    const exists = prev.find(l => l.id === uniqueId);
+                    if (exists) {
+                        return prev.map(l => l.id === uniqueId ? { ...l, urlFormat, name: newLayer.name, visible: true } : l);
+                    }
+                    return [...prev, newLayer];
+                });
+            } else {
+                setSearchLayers(prev => {
+                    // Remove ALL existing search layers from map first to ensure "Capa Temporal" only has one
+                    prev.forEach(l => {
+                        if (map.current) {
+                            if (map.current.getLayer(`ee-layer-${l.id}`)) map.current.removeLayer(`ee-layer-${l.id}`);
+                            if (map.current.getSource(`ee-source-${l.id}`)) map.current.removeSource(`ee-source-${l.id}`);
+                        }
+                    });
+                    // Only return the NEW layer as the single "Capa Temporal"
+                    return [newLayer];
+                });
             }
 
-            if (targetMap.getLayer(layerId)) targetMap.removeLayer(layerId);
-            if (targetMap.getSource(sourceId)) targetMap.removeSource(sourceId);
 
-            targetMap.addSource(sourceId, {
-                type: "raster",
-                tiles: [urlFormat],
-                tileSize: 256,
-            });
+            if (isCompareMode) {
+                // Compare mode logic remains simplified to left/right for now 
+                // but we use the new ID for the map instance
+                const sourceId = "ee-source-" + target;
+                const layerId = "ee-layer-" + target;
 
-            // Find the first draw layer to place the raster layer below it
-            const layers = targetMap.getStyle().layers;
-            const firstDrawLayer = layers.find(l => l.id.startsWith('gl-draw-'));
-            const beforeId = firstDrawLayer ? firstDrawLayer.id : undefined;
+                let targetMap;
+                if (target === 'left') targetMap = mapLeft.current;
+                if (target === 'right') targetMap = mapRight.current;
 
-            targetMap.addLayer({
-                id: layerId,
-                type: "raster",
-                source: sourceId,
-                minzoom: 0,
-                maxzoom: 22,
-            }, beforeId);
+                if (targetMap) {
+                    if (targetMap.getLayer(layerId)) targetMap.removeLayer(layerId);
+                    if (targetMap.getSource(sourceId)) targetMap.removeSource(sourceId);
 
-            if (target === 'single') setActiveLayerId(imageId);
-            if (target === 'left') setLeftLayerId(imageId);
-            if (target === 'right') setRightLayerId(imageId);
+                    targetMap.addSource(sourceId, {
+                        type: "raster",
+                        tiles: [urlFormat],
+                        tileSize: 256,
+                    });
 
+                    targetMap.addLayer({
+                        id: layerId,
+                        type: "raster",
+                        source: sourceId,
+                    });
+                }
+                if (target === 'left') setLeftLayerId(imageId);
+                if (target === 'right') setRightLayerId(imageId);
+            } else {
+                // Single map mode: Add as a distinct layer in the list
+                addLayerToMap(uniqueId, urlFormat);
+
+                // User requested: "cuando tengas una imagen en paremante y busques una nueva solo desactivala"
+                // Hide ALL other raster layers on the map to focus on the new one
+                [...permanentLayers, ...searchLayers].forEach(l => {
+                    if (l.id !== uniqueId && map.current && map.current.getLayer(`ee-layer-${l.id}`)) {
+                        map.current.setLayoutProperty(`ee-layer-${l.id}`, 'visibility', 'none');
+                    }
+                });
+
+                // We keep the state checkboxes as they are, or just mark the current as visible.
+                setSearchLayers(prev => prev.map(l => l.id === uniqueId ? { ...l, visible: true } : l));
+                setPermanentLayers(prev => prev.map(l => l.id === uniqueId ? { ...l, visible: true } : l));
+
+                setActiveLayerId(uniqueId);
+            }
         } catch (e) {
             setError(e.message);
             alert("Error loading layer: " + e.message);
@@ -1338,7 +1788,8 @@ export default function Geoportal() {
                 if (timelineScrollRef.current) {
                     // If we have an active layer, try to center it
                     if (activeLayerId) {
-                        const imgIndex = groupedImages.findIndex(img => img.id === activeLayerId);
+                        const baseImageId = activeLayerId.split('__VIS:')[0];
+                        const imgIndex = groupedImages.findIndex(img => img.id === baseImageId);
                         if (imgIndex >= 0) {
                             const img = groupedImages[imgIndex];
                             // Re-use logic for centering (simplified here)
@@ -1398,7 +1849,6 @@ export default function Geoportal() {
         // Actually handleLayerAdd creates a new layer. It might reset opacity to default (1).
         // So we might need to modify handleLayerAdd to use current opacity or trigger this effect.
         // But this effect only runs on [layerOpacity].
-        // Let's add 'activeLayerId' or just re-run this logic inside handleLayerAdd.
         // For simplicity, let's trust that changing opacity slider AFTER loading works.
         // If I load a new layer, it will be 100%. 
         // To fix that, we can just add layerOpacity to the dependency array of a "Sync Opacity" effect 
@@ -1410,7 +1860,8 @@ export default function Geoportal() {
     useEffect(() => {
         if (!loading && activeLayerId && !isCompareMode) {
             console.log("Auto-updating layer viz...");
-            handleLayerAdd(activeLayerId, 'single');
+            const baseImageId = activeLayerId.split('__VIS:')[0];
+            handleLayerAdd(baseImageId, 'single');
         }
     }, [visOption]);
 
@@ -1440,6 +1891,16 @@ export default function Geoportal() {
             const best = item.images.reduce((prev, curr) => prev.cloud < curr.cloud ? prev : curr);
             imgId = best.id;
             console.log(`Auto-selected image from group ${item.date}:`, best);
+        }
+
+        if (visOption === "Crop Monitoring" || visOption === "Vegetation Change") {
+            if (cropSelectionMode === 'master') {
+                setCropT1(item);
+                setCropSelectionMode('slave');
+            } else {
+                setCropT2(item);
+            }
+            return;
         }
 
         if (isCompareMode) {
@@ -1472,15 +1933,6 @@ export default function Geoportal() {
         }
     };
 
-    {/* Draw Mode Handlers */ }
-    const handleDrawPolygon = () => {
-        setDrawMode('simple');
-        setEraseOverlap(false); // Standard draw, allow overlap
-        if (draw.current) {
-            // draw.current.deleteAll(); // Removed to allow multiple polygons
-            draw.current.changeMode('draw_polygon');
-        }
-    };
 
     const handleCutPolygon = () => {
         if (!geometry) {
@@ -1512,10 +1964,68 @@ export default function Geoportal() {
         }
     };
 
+    const downloadGeometries = () => {
+        if (!draw.current) return;
+        const data = draw.current.getAll();
+        if (data.features.length === 0) {
+            alert("No hay geometrías para descargar");
+            return;
+        }
+
+        // Add additional properties from the drawnPolygons state to ensure names and fields are included
+        const enrichedFeatures = data.features.map(f => {
+            const extra = drawnPolygons.find(p => p.id === f.id);
+            if (extra) {
+                return {
+                    ...f,
+                    properties: {
+                        ...f.properties,
+                        name: extra.name,
+                        auto_id: extra.auto_id,
+                        metric_value: extra.metricValue,
+                        metric_label: extra.metricLabel,
+                        custom_fields: extra.fields
+                    }
+                };
+            }
+            return f;
+        });
+
+        // Group by type
+        const groups = {
+            poligonos: enrichedFeatures.filter(f => f.geometry.type.includes('Polygon')),
+            lineas: enrichedFeatures.filter(f => f.geometry.type.includes('LineString')),
+            puntos: enrichedFeatures.filter(f => f.geometry.type.includes('Point'))
+        };
+
+        const dateStr = new Date().toISOString().split('T')[0];
+
+        Object.entries(groups).forEach(([name, features]) => {
+            if (features.length === 0) return;
+
+            const collection = {
+                type: "FeatureCollection",
+                features: features
+            };
+
+            const json = JSON.stringify(collection, null, 2);
+            const blob = new Blob([json], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `${name}_${dateStr}.geojson`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(url), 100);
+        });
+    };
+
     // Timeline Navigation Handlers
     const getActiveImageIndex = () => {
         if (!activeLayerId || groupedImages.length === 0) return -1;
-        return groupedImages.findIndex(img => img.id === activeLayerId);
+        const baseImageId = activeLayerId.split('__VIS:')[0];
+        return groupedImages.findIndex(img => img.id === baseImageId);
     };
 
     const handlePrevImage = () => {
@@ -1534,22 +2044,20 @@ export default function Geoportal() {
         }
     };
 
-    // Auto-load Canopy Height when selected
+    // Auto-load static layers when selected
     useEffect(() => {
-        if (sensor === "Canopy Height (Meta)") {
-            // Create mock image object
+        if (sensor === "Canopy Height (Meta)" || sensor === "Digital Surface Model") {
+            const mockId = sensor === "Canopy Height (Meta)" ? "CANOPY_HEIGHT_MOSAIC" : "DSM_MOSAIC";
             const mockImage = {
-                id: "CANOPY_HEIGHT_MOSAIC",
-                date: "Global Mosaic",
+                id: mockId,
+                date: "Static Mosaic",
                 cloud: 0,
                 time: Date.now()
             };
-            // Update timeline state
             setImages([mockImage]);
-            // Load the layer
-            handleLayerAdd(mockImage.id);
+            handleLayerAdd(mockId, 'single');
         }
-    }, [sensor, minTreeHeight]);
+    }, [sensor, minTreeHeight, visOption]);
 
     // Handle Canopy reload when slider changes (debounced effect via dependency in handleLayerAdd would be best)
     // For now, handleLayerAdd is called inside useEffect above. 
@@ -1564,6 +2072,12 @@ export default function Geoportal() {
                 <div className={styles.brand}>
                     <span>GEE Explorer</span>
                     <button
+                        className={`${styles.explorerBtn} ${isLayersOpen ? styles.explorerBtnActive : ''}`}
+                        onClick={() => setIsLayersOpen(!isLayersOpen)}
+                    >
+                        Capas {isLayersOpen ? '▲' : '▼'}
+                    </button>
+                    <button
                         className={`${styles.explorerBtn} ${isExplorerOpen ? styles.explorerBtnActive : ''}`}
                         onClick={() => {
                             setIsExplorerOpen(!isExplorerOpen);
@@ -1572,28 +2086,6 @@ export default function Geoportal() {
                     >
                         Explorador {isExplorerOpen ? '▲' : '▼'}
                     </button>
-
-                    <button
-                        className={`${styles.explorerBtn} ${activeTab === 'monitor' ? styles.explorerBtnActive : ''}`}
-                        onClick={() => {
-                            setActiveTab('monitor');
-                            setIsExplorerOpen(true);
-                        }}
-                    >
-                        Monitor
-                    </button>
-
-                    <button
-                        className={`${styles.explorerBtn} ${activeTab === 'geomorphology' ? styles.explorerBtnActive : ''}`}
-                        onClick={() => {
-                            setActiveTab('geomorphology');
-                            setIsExplorerOpen(true);
-                        }}
-                    >
-                        Geomorphology
-                    </button>
-
-
                 </div>
 
                 <form className={styles.searchContainer} onSubmit={handleLocationSearch}>
@@ -1607,42 +2099,229 @@ export default function Geoportal() {
                     <span className={styles.searchIcon} onClick={handleLocationSearch}>🔍</span>
                 </form>
 
-                {/* Navbar Draw Tools */}
-                <div className={styles.navToolbar}>
-                    <button
-                        className={`${styles.navIconBtn} ${drawMode === 'simple' && !eraseOverlap ? styles.navIconBtnActive : ''}`}
-                        onClick={handleDrawPolygon}
-                        title="Draw Polygon"
-                    >
-                        <IconPolygon />
-                    </button>
-                    <button
-                        className={`${styles.navIconBtn} ${drawMode === 'cut' ? styles.navIconBtnActive : ''}`}
-                        onClick={handleCutPolygon}
-                        title="Cut Polygon"
-                    >
-                        <IconCut />
-                    </button>
-                    <button
-                        className={`${styles.navIconBtn} ${eraseOverlap ? styles.navIconBtnActive : ''}`}
-                        onClick={handleDrawAutocomplete}
-                        title="Auto-Complete (Magnet)"
-                    >
-                        <IconMagnet />
-                    </button>
-                    <button
-                        className={styles.navIconBtn}
-                        onClick={handleDeleteSelected}
-                        title="Clear Selection"
-                    >
-                        <IconTrash />
-                    </button>
-                </div>
                 <div style={{ width: '20px' }}></div>
             </nav>
 
             <div className={styles.mapWrapper}>
-                {/* Floating Sidebar (Explorer) */}
+                {/* Layers Panel (Left Side) */}
+                <div className={`${styles.layersPanel} ${isLayersOpen ? styles.layersVisible : ''}`}>
+                    <div className={styles.drawToolbar}>
+                        <button
+                            className={`${styles.drawIconBtn} ${drawMode === 'simple' && !eraseOverlap ? styles.drawIconBtnActive : ''}`}
+                            onClick={handleDrawPolygon}
+                            title="Polígono"
+                        >
+                            <IconPolygon />
+                        </button>
+                        <button
+                            className={`${styles.drawIconBtn} ${drawMode === 'line' ? styles.drawIconBtnActive : ''}`}
+                            onClick={handleDrawLine}
+                            title="Línea"
+                        >
+                            <IconLine />
+                        </button>
+                        <button
+                            className={`${styles.drawIconBtn} ${drawMode === 'point' ? styles.drawIconBtnActive : ''}`}
+                            onClick={handleDrawPoint}
+                            title="Punto"
+                        >
+                            <IconPoint />
+                        </button>
+                        <button
+                            className={`${styles.drawIconBtn} ${drawMode === 'cut' ? styles.drawIconBtnActive : ''}`}
+                            onClick={handleCutPolygon}
+                            title="Cortar"
+                        >
+                            <IconCut />
+                        </button>
+                        <button
+                            className={`${styles.drawIconBtn} ${eraseOverlap ? styles.drawIconBtnActive : ''}`}
+                            onClick={handleDrawAutocomplete}
+                            title="Autocompletar"
+                        >
+                            <IconMagnet />
+                        </button>
+                        <button
+                            className={styles.drawIconBtn}
+                            onClick={handleDeleteSelected}
+                            title="Borrar"
+                        >
+                            <IconTrash />
+                        </button>
+                        <button
+                            className={styles.drawIconBtn}
+                            onClick={downloadGeometries}
+                            style={{ marginLeft: 'auto', backgroundColor: '#10b981', borderColor: 'transparent' }}
+                            title="Descargar GeoJSON"
+                        >
+                            <IconDownload />
+                        </button>
+                    </div>
+
+                    <div className={styles.layersSplit}>
+                        <div className={styles.layersSection}>
+                            <div className={styles.layersHeader}>Capas y Polígonos</div>
+                            <div className={styles.layersList}>
+                                {/* Drawn Polygons */}
+                                {drawnPolygons.map((poly, idx) => (
+                                    <div key={poly.id} className={styles.layerItem}>
+                                        <div className={styles.layerMain}>
+                                            <input
+                                                type="checkbox"
+                                                checked={poly.visible}
+                                                onChange={() => {
+                                                    const newVisible = !poly.visible;
+                                                    setDrawnPolygons(prev => prev.map(p => p.id === poly.id ? { ...p, visible: newVisible } : p));
+                                                    if (draw.current) {
+                                                        draw.current.setFeatureProperty(poly.id, 'user_hidden', newVisible ? undefined : 'true');
+                                                        const feat = draw.current.get(poly.id);
+                                                        if (feat) draw.current.add(feat);
+                                                    }
+                                                }}
+                                            />
+                                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                <input
+                                                    className={styles.layerRenameInput}
+                                                    value={poly.name}
+                                                    onChange={(e) => renameDrawnPolygon(poly.id, e.target.value)}
+                                                    placeholder="Nombre..."
+                                                />
+                                                <div style={{ fontSize: '0.7rem', color: '#888' }}>
+                                                    ID: {poly.auto_id} | {poly.metricValue} {poly.metricLabel}
+                                                </div>
+                                            </div>
+                                            <div className={styles.layerActions}>
+                                                <button
+                                                    className={styles.layerActionBtn}
+                                                    onClick={() => {
+                                                        const centroid = turf.centroid(poly);
+                                                        const pos = map.current.project(centroid.geometry.coordinates);
+                                                        setFeatureModal({ show: true, id: poly.id, position: pos, autoId: poly.auto_id });
+                                                    }}
+                                                    title="Info"
+                                                >
+                                                    ℹ
+                                                </button>
+                                                <button
+                                                    className={styles.layerActionBtn}
+                                                    onClick={() => handleEditFeature(poly.id)}
+                                                    title="Editar"
+                                                >
+                                                    ✎
+                                                </button>
+                                                <button
+                                                    className={styles.layerActionBtn}
+                                                    onClick={() => {
+                                                        if (draw.current) draw.current.delete(poly.id);
+                                                        updateDrawnPolygons(draw.current);
+                                                    }}
+                                                    title="Borrar"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {/* Permanent Layers */}
+                                {permanentLayers.map((layer, idx) => (
+                                    <div key={layer.id} className={`${styles.layerItem} ${activeLayerId === layer.id ? styles.layerItemActive : ''}`}>
+                                        <div className={styles.layerMain}>
+                                            <input
+                                                type="checkbox"
+                                                checked={layer.visible}
+                                                onChange={() => toggleLayerVisibility(layer.id, 'permanent')}
+                                            />
+                                            <span className={styles.layerName}>{layer.name}</span>
+                                            <div className={styles.layerActions}>
+                                                <button
+                                                    className={`${styles.layerActionBtn} ${rightLayerId === layer.id ? styles.layerActionBtnActive : ''}`}
+                                                    onClick={() => toggleLayerSwipe(layer.id, layer.urlFormat)}
+                                                    title="Swipe (Compare)"
+                                                >
+                                                    ⇄
+                                                </button>
+                                                <button
+                                                    className={styles.layerActionBtn}
+                                                    onClick={() => moveLayer(layer.id, 'permanent', 'search')}
+                                                    title="Mover abajo"
+                                                >
+                                                    ↓
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className={styles.layerControls}>
+                                            <input
+                                                type="range"
+                                                className={styles.layerOpacityRange}
+                                                min="0" max="100"
+                                                value={layer.opacity || 100}
+                                                onChange={(e) => updateLayerOpacity(layer.id, parseInt(e.target.value))}
+                                            />
+                                            <div className={styles.layerActions}>
+                                                <button className={styles.layerActionBtn} onClick={() => moveLayerInList('permanent', layer.id, 'up')}>▴</button>
+                                                <button className={styles.layerActionBtn} onClick={() => moveLayerInList('permanent', layer.id, 'down')}>▾</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className={styles.layersSection}>
+                            <div className={styles.layersHeader}>Capa Temporal</div>
+                            <div className={styles.layersList}>
+                                {searchLayers.map((layer, idx) => (
+                                    <div key={layer.id} className={`${styles.layerItem} ${activeLayerId === layer.id ? styles.layerItemActive : ''}`}>
+                                        <div className={styles.layerMain}>
+                                            <input
+                                                type="checkbox"
+                                                checked={layer.visible}
+                                                onChange={() => toggleLayerVisibility(layer.id, 'search')}
+                                            />
+                                            <span className={styles.layerName}>{layer.name}</span>
+                                            <div className={styles.layerActions}>
+                                                <button
+                                                    className={`${styles.layerActionBtn} ${rightLayerId === layer.id ? styles.layerActionBtnActive : ''}`}
+                                                    onClick={() => toggleLayerSwipe(layer.id, layer.urlFormat)}
+                                                    title="Swipe (Compare)"
+                                                >
+                                                    ⇄
+                                                </button>
+                                                <button
+                                                    className={styles.layerActionBtn}
+                                                    onClick={() => moveLayer(layer.id, 'search', 'permanent')}
+                                                    title="Mover arriba"
+                                                >
+                                                    ↑
+                                                </button>
+                                                <button
+                                                    className={styles.layerActionBtn}
+                                                    onClick={() => removeLayerFromList(layer.id)}
+                                                    title="Quitar"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className={styles.layerControls}>
+                                            <input
+                                                type="range"
+                                                className={styles.layerOpacityRange}
+                                                min="0" max="100"
+                                                value={layer.opacity || 100}
+                                                onChange={(e) => updateLayerOpacity(layer.id, parseInt(e.target.value))}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Floating Sidebar (Explorer) - Moved to Right in CSS */}
                 <div className={`${styles.sidebar} ${isExplorerOpen ? styles.sidebarVisible : ''}`}>
                     <div className={styles.sidebarContent}>
                         {/* Tabs */}
@@ -1674,19 +2353,6 @@ export default function Geoportal() {
                                 <div className={styles.subtitle}>Configure filters below</div>
 
                                 <div className={styles.section}>
-                                    {/* Compare Mode Toggle */}
-                                    {images.length >= 2 && (
-                                        <div
-                                            className={`${styles.compareToggle} ${isCompareMode ? styles.toggleActive : ''}`}
-                                            onClick={() => setIsCompareMode(!isCompareMode)}
-                                        >
-                                            <span>Compare Mode (Swipe)</span>
-                                            <div className={styles.toggleSwitch}>
-                                                <div className={styles.toggleKnob}></div>
-                                            </div>
-                                        </div>
-                                    )}
-
                                     <div className={styles.instruction}>
                                         {geometry ? "✅ Location selected" : "Click map or upload/draw geometry"}
                                     </div>
@@ -1703,9 +2369,10 @@ export default function Geoportal() {
                                             <option value="Sentinel Harmonized">Sentinel Harmonized</option>
                                             <option value="Sentinel-1 (SAR)">Sentinel-1 (SAR)</option>
                                             <option value="Canopy Height (Meta)">Canopy Height (Meta)</option>
+                                            <option value="Digital Surface Model">Digital Surface Model</option>
                                         </select>
 
-                                        {sensor !== "Canopy Height (Meta)" && (
+                                        {sensor !== "Canopy Height (Meta)" && sensor !== "Digital Surface Model" && (
                                             <>
                                                 <label className={styles.label}>Visualization</label>
                                                 <select
@@ -1715,10 +2382,10 @@ export default function Geoportal() {
                                                 >
                                                     {sensor === "Sentinel-1 (SAR)" ? (
                                                         <>
-                                                            <option value="RGB (VV+VH)">RGB (VV+VH Combined)</option>
-                                                            <option value="VV Intensity">VV Intensity</option>
-                                                            <option value="VH Intensity">VH Intensity</option>
-                                                            <option value="VV + DEM">VV + DEM (Elevation)</option>
+                                                            <option value="Harvest-Deforestation">Harvest-Deforestation (SAR)</option>
+                                                            <option value="Radar Vegetation Index">Radar Vegetation Index (RVI)</option>
+                                                            <option value="Crop Monitoring">Crop Monitoring (SAR Change)</option>
+                                                            <option value="Radar Soil Moisture">Radar Soil Moisture (SSM Index)</option>
                                                         </>
                                                     ) : (
                                                         <>
@@ -1726,23 +2393,74 @@ export default function Geoportal() {
                                                             <option value="False Color (Infrared)">False Color (Infrared)</option>
                                                             <option value="NDVI">NDVI (Vegetation)</option>
                                                             <option value="NDWI">NDWI (Water)</option>
+                                                            <option value="Vegetation Change">Vegetation Change (Delta NDVI)</option>
+                                                            <option value="Wildfire">Wildfire (Hotspots)</option>
                                                         </>
                                                     )}
                                                 </select>
 
-                                                <label className={styles.label}>Date Range</label>
-                                                <input
-                                                    type="date"
-                                                    className={styles.input}
-                                                    value={startDate}
-                                                    onChange={(e) => setStartDate(e.target.value)}
-                                                />
-                                                <input
-                                                    type="date"
-                                                    className={styles.input}
-                                                    value={endDate}
-                                                    onChange={(e) => setEndDate(e.target.value)}
-                                                />
+                                                {(visOption === "Crop Monitoring" || visOption === "Vegetation Change") && (
+                                                    <div style={{ marginTop: '10px', padding: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '8px' }}>
+                                                        <div className={styles.label} style={{ fontSize: '11px', marginBottom: '5px' }}>{visOption} Configuration</div>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' }}>
+                                                            <button
+                                                                className={styles.button}
+                                                                style={{ fontSize: '10px', background: cropSelectionMode === 'master' ? '#0070f3' : '#333', padding: '5px' }}
+                                                                onClick={() => setCropSelectionMode('master')}
+                                                            >
+                                                                Set T1: {cropT1 ? cropT1.date : 'Pick...'}
+                                                            </button>
+                                                            <button
+                                                                className={styles.button}
+                                                                style={{ fontSize: '10px', background: cropSelectionMode === 'slave' ? '#0070f3' : '#333', padding: '5px' }}
+                                                                onClick={() => setCropSelectionMode('slave')}
+                                                            >
+                                                                Set T2: {cropT2 ? cropT2.date : 'Pick...'}
+                                                            </button>
+                                                        </div>
+                                                        {cropT1 && cropT2 && (
+                                                            <button
+                                                                className={styles.button}
+                                                                style={{ marginTop: '8px', background: '#28a745' }}
+                                                                onClick={() => handleLayerAdd(cropT2.id)}
+                                                            >
+                                                                Run Analysis
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                <label className={styles.label} style={{ marginTop: '10px' }}>Date Range</label>
+                                                <div style={{ display: 'flex', gap: '10px' }}>
+                                                    <input
+                                                        type="date"
+                                                        className={styles.input}
+                                                        value={startDate}
+                                                        onChange={(e) => setStartDate(e.target.value)}
+                                                    />
+                                                    <input
+                                                        type="date"
+                                                        className={styles.input}
+                                                        value={endDate}
+                                                        onChange={(e) => setEndDate(e.target.value)}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {sensor === "Digital Surface Model" && (
+                                            <>
+                                                <label className={styles.label}>Terrain Mode</label>
+                                                <select
+                                                    className={styles.select}
+                                                    value={visOption}
+                                                    onChange={(e) => setVisOption(e.target.value)}
+                                                >
+                                                    <option value="DEM">Elevation (DEM)</option>
+                                                    <option value="Slope">Slope (Pendiente)</option>
+                                                    <option value="Aspect">Aspect (Exposición)</option>
+                                                    <option value="Hillshade">Hillshade (Sombra)</option>
+                                                </select>
                                             </>
                                         )}
 
@@ -1761,7 +2479,7 @@ export default function Geoportal() {
 
                                     </div>
 
-                                    {sensor !== "Sentinel-1 (SAR)" && sensor !== "Canopy Height (Meta)" && (
+                                    {sensor !== "Sentinel-1 (SAR)" && sensor !== "Canopy Height (Meta)" && sensor !== "Digital Surface Model" && (
                                         <>
                                             <label className={styles.label}>Max Clouds: {cloudCover}%</label>
                                             <input
@@ -1830,36 +2548,6 @@ export default function Geoportal() {
                                 <div className={styles.subtitle}>Use tools to create polygons</div>
 
                                 <div className={styles.section}>
-                                    <div className={styles.drawToolbar}>
-                                        <div
-                                            className={`${styles.iconBtn} ${drawMode === 'simple' && !eraseOverlap ? styles.iconBtnActive : ''}`}
-                                            onClick={handleDrawPolygon}
-                                            title="Draw Polygon"
-                                        >
-                                            ⬠
-                                        </div>
-                                        <div
-                                            className={`${styles.iconBtn} ${drawMode === 'cut' ? styles.iconBtnActive : ''}`}
-                                            onClick={handleCutPolygon}
-                                            title="Cut Polygon"
-                                        >
-                                            ✂️
-                                        </div>
-                                        <div
-                                            className={`${styles.iconBtn} ${eraseOverlap ? styles.iconBtnActive : ''}`}
-                                            onClick={handleDrawAutocomplete}
-                                            title="Draw w/ Autocomplete"
-                                        >
-                                            🧩
-                                        </div>
-                                        <div
-                                            className={styles.iconBtn}
-                                            onClick={handleDeleteSelected}
-                                            title="Delete Selected"
-                                        >
-                                            🗑️
-                                        </div>
-                                    </div>
 
                                     <div className={styles.checkboxContainer} style={{ marginTop: '10px' }}>
                                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
@@ -1906,188 +2594,6 @@ export default function Geoportal() {
                             </>
                         )}
 
-                        {/* MONITOR TAB */}
-                        {activeTab === 'monitor' && (
-                            <>
-                                <div className={styles.title}>Monitor Territory</div>
-                                <div className={styles.subtitle}>Cloud stats & Change Detection</div>
-
-                                <div className={styles.section}>
-                                    <label className={styles.label}>Select Comuna</label>
-                                    <select
-                                        className={styles.select}
-                                        value={selectedComuna}
-                                        onChange={(e) => setSelectedComuna(e.target.value)}
-                                    >
-                                        <option value="">-- Choose Comuna --</option>
-                                        {comunas.map(c => (
-                                            <option key={c} value={c}>{c}</option>
-                                        ))}
-                                    </select>
-
-                                    <div style={{ marginTop: '10px' }}>
-                                        <label className={styles.label}>Date Range</label>
-                                        <input
-                                            type="date"
-                                            className={styles.input}
-                                            value={startDate}
-                                            onChange={(e) => setStartDate(e.target.value)}
-                                        />
-                                        <input
-                                            type="date"
-                                            className={styles.input}
-                                            value={endDate}
-                                            onChange={(e) => setEndDate(e.target.value)}
-                                        />
-                                    </div>
-
-                                    <button
-                                        className={styles.button}
-                                        onClick={handleMonitorSearch}
-                                        disabled={loading || !selectedComuna}
-                                        style={{ marginTop: '15px' }}
-                                    >
-                                        {loading ? "Searching..." : "Analyze Cloud Series"}
-                                    </button>
-
-                                    {/* Simple Chart / List */}
-                                    {monitorData.length > 0 && (
-                                        <div style={{ marginTop: '20px', maxHeight: '200px', overflowY: 'auto' }}>
-                                            <div className={styles.label}>Select Image for Analysis:</div>
-                                            {monitorData.map((d) => (
-                                                <div
-                                                    key={d.id}
-                                                    onClick={() => {
-                                                        setSelectedMonitorImage(d);
-                                                        setAnalysisResult(null); // Reset analysis
-                                                    }}
-                                                    style={{
-                                                        padding: '8px',
-                                                        border: selectedMonitorImage?.id === d.id ? '2px solid #0070f3' : '1px solid #ccc',
-                                                        borderRadius: '4px',
-                                                        marginBottom: '5px',
-                                                        cursor: 'pointer',
-                                                        background: '#fff',
-                                                        display: 'flex',
-                                                        justifyContent: 'space-between',
-                                                        fontSize: '12px'
-                                                    }}
-                                                >
-                                                    <span>{d.date}</span>
-                                                    <span>☁ {Math.round(d.cloud)}%</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {selectedMonitorImage && (
-                                        <div style={{ marginTop: '20px', borderTop: '1px solid #ccc', paddingTop: '10px' }}>
-                                            <div className={styles.label}>Change Detection</div>
-                                            <div className={styles.instruction}>
-                                                Target: {selectedMonitorImage.date}
-                                            </div>
-
-                                            <label className={styles.label} style={{ marginTop: '10px' }}>Baseline Year (Optional)</label>
-                                            <input
-                                                type="number"
-                                                className={styles.input}
-                                                placeholder="e.g. 2024"
-                                                value={baselineYear}
-                                                onChange={(e) => setBaselineYear(e.target.value)}
-                                            />
-
-                                            <button
-                                                className={styles.button}
-                                                onClick={handleMonitorAnalysis}
-                                                disabled={loading}
-                                                style={{ marginTop: '10px', background: '#e00' }}
-                                            >
-                                                {loading ? "Processing..." : "Calculate Differences"}
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {analysisResult && (
-                                        <div style={{ marginTop: '15px', padding: '10px', background: '#f0f9ff', borderRadius: '4px' }}>
-                                            <div>✅ Analysis Complete</div>
-                                            {analysisResult.downloadUrl && (
-                                                <a
-                                                    href={analysisResult.downloadUrl}
-                                                    target="_blank"
-                                                    className={styles.link}
-                                                    style={{ display: 'block', marginTop: '5px', color: '#0070f3' }}
-                                                >
-                                                    💾 Download KMZ
-                                                </a>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {error && <div className={styles.error} style={{ marginTop: '10px' }}>{error}</div>}
-                                </div>
-                            </>
-                        )}
-
-                        {/* GEOMORPHOLOGY TAB */}
-                        {activeTab === 'geomorphology' && (
-                            <>
-                                <div className={styles.title}>Geomorphology</div>
-                                <div className={styles.subtitle}>Terrain Analysis</div>
-
-                                <div className={styles.section}>
-                                    <label className={styles.label}>Select Comuna</label>
-                                    <select
-                                        className={styles.select}
-                                        value={selectedGeomComuna}
-                                        onChange={(e) => setSelectedGeomComuna(e.target.value)}
-                                    >
-                                        <option value="">-- Choose Comuna --</option>
-                                        {comunas.map(c => (
-                                            <option key={c} value={c}>{c}</option>
-                                        ))}
-                                    </select>
-
-                                    <label className={styles.label} style={{ marginTop: '10px' }}>Analysis Type</label>
-                                    <select
-                                        className={styles.select}
-                                        value={geomType}
-                                        onChange={(e) => setGeomType(e.target.value)}
-                                    >
-                                        <option value="Slope">Slope (Pendiente)</option>
-                                        <option value="Aspect">Aspect (Exposición)</option>
-                                        <option value="Hillshade">Hillshade (Sombra)</option>
-                                        <option value="DEM">DEM (Elevación)</option>
-                                    </select>
-
-                                    <button
-                                        className={styles.button}
-                                        onClick={handleGeomAnalysis}
-                                        disabled={loading || !selectedGeomComuna}
-                                        style={{ marginTop: '15px' }}
-                                    >
-                                        {loading ? "Generating..." : "Generate Analysis"}
-                                    </button>
-
-                                    {geomResult && (
-                                        <div style={{ marginTop: '15px', padding: '10px', background: '#f0f9ff', borderRadius: '4px' }}>
-                                            <div>✅ Analysis Complete</div>
-                                            {geomResult.downloadUrl && (
-                                                <a
-                                                    href={geomResult.downloadUrl}
-                                                    target="_blank"
-                                                    className={styles.link}
-                                                    style={{ display: 'block', marginTop: '5px', color: '#0070f3' }}
-                                                >
-                                                    💾 Download GeoTIFF
-                                                </a>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {error && <div className={styles.error} style={{ marginTop: '10px' }}>{error}</div>}
-                                </div>
-                            </>
-                        )}
 
 
                     </div>
@@ -2101,6 +2607,120 @@ export default function Geoportal() {
                             <div ref={rightMapContainer} className={styles.mapRight}></div>
                         </>
                     )}
+
+                    {/* Geometry Info Modal */}
+                    {featureModal.show && featureModal.position && (() => {
+                        const polyData = drawnPolygons.find(p => p.id === featureModal.id);
+                        return (
+                            <div
+                                className={styles.geometryModal}
+                                style={{
+                                    left: featureModal.position.x,
+                                    top: featureModal.position.y,
+                                }}
+                            >
+                                <div className={styles.modalHeader}>
+                                    <span>{featureModal.isEditable ? 'Editando Atributos' : 'Atributos de Geometría'}</span>
+                                    <button className={styles.modalClose} onClick={() => {
+                                        setFeatureModal({ ...featureModal, show: false });
+                                        setEditingGeometryId(null);
+                                    }}>✕</button>
+                                </div>
+                                <div className={styles.modalContent}>
+                                    <div className={styles.modalRow}>
+                                        <label>ID:</label>
+                                        <input type="text" value={featureModal.autoId || ''} readOnly className={styles.modalInputReadOnly} />
+                                    </div>
+                                    <div className={styles.modalRow}>
+                                        <label>{polyData?.metricLabel === 'km' ? 'Longitud (km):' : 'Superficie (ha):'}</label>
+                                        <input type="text" value={polyData?.metricValue || '0.0'} readOnly className={styles.modalInputReadOnly} />
+                                    </div>
+
+                                    {drawnPolygons.find(p => p.id === featureModal.id)?.fields?.map((field, fIdx) => (
+                                        <div key={fIdx} className={styles.modalFieldGroup}>
+                                            <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                                                <input
+                                                    placeholder="Nombre Campo"
+                                                    value={field.name}
+                                                    disabled={!featureModal.isEditable}
+                                                    onChange={(e) => updateCustomField(featureModal.id, fIdx, 'name', e.target.value)}
+                                                    className={styles.modalInputSmall}
+                                                />
+                                                {featureModal.isEditable && (
+                                                    <select
+                                                        value={field.type}
+                                                        onChange={(e) => updateCustomField(featureModal.id, fIdx, 'type', e.target.value)}
+                                                        className={styles.modalSelectSmall}
+                                                        style={{ width: '90px' }}
+                                                    >
+                                                        <option value="string">Texto</option>
+                                                        <option value="int">Entero</option>
+                                                        <option value="date">Fecha</option>
+                                                    </select>
+                                                )}
+                                            </div>
+                                            <input
+                                                type={field.type === 'date' ? 'date' : (field.type === 'int' ? 'number' : 'text')}
+                                                placeholder="Valor"
+                                                value={field.value}
+                                                disabled={!featureModal.isEditable}
+                                                onChange={(e) => updateCustomField(featureModal.id, fIdx, 'value', e.target.value)}
+                                                className={styles.modalInputSmall}
+                                            />
+                                        </div>
+                                    ))}
+
+                                    <div className={styles.modalActions}>
+                                        {featureModal.isEditable ? (
+                                            <>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <button
+                                                        className={styles.modalAddBtnMini}
+                                                        onClick={() => addCustomField(featureModal.id)}
+                                                        title="Nuevo Campo"
+                                                    >
+                                                        +
+                                                    </button>
+                                                    <button
+                                                        className={styles.modalAddBtnMini}
+                                                        style={{ backgroundColor: '#6366f1' }}
+                                                        onClick={() => {
+                                                            const target = drawnPolygons.find(p => p.id === featureModal.id);
+                                                            const mode = target.geometry.type.includes('Polygon') ? 'draw_polygon' :
+                                                                target.geometry.type.includes('LineString') ? 'draw_line_string' : 'draw_point';
+                                                            setEditingGeometryId(featureModal.id);
+                                                            draw.current.changeMode(mode);
+                                                        }}
+                                                        title="Añadir Parte (Multi)"
+                                                    >
+                                                        🧩
+                                                    </button>
+                                                </div>
+                                                <button
+                                                    className={styles.modalSaveBtn}
+                                                    onClick={() => {
+                                                        setFeatureModal({ ...featureModal, isEditable: false });
+                                                        setEditingGeometryId(null);
+                                                        if (draw.current) draw.current.changeMode('simple_select');
+                                                    }}
+                                                >
+                                                    Guardar
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <button
+                                                className={styles.modalSaveBtn}
+                                                style={{ backgroundColor: '#3b82f6', width: '100%' }}
+                                                onClick={() => setFeatureModal({ ...featureModal, isEditable: true })}
+                                            >
+                                                ✎ Editar Atributos
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Show/Hide Timeline Button - Centered Bottom */}
                     <div style={{
@@ -2129,7 +2749,7 @@ export default function Geoportal() {
                                     style={{ cursor: 'pointer', minWidth: '100px' }}
                                     title="Show Timeline"
                                 >
-                                    {activeLayerId ? (groupedImages.find(img => img.id === activeLayerId)?.date || 'Cargando...') : 'Seleccionar imagen'}
+                                    {activeLayerId ? (groupedImages.find(img => img.id === activeLayerId.split('__VIS:')[0])?.date || 'Cargando...') : 'Seleccionar imagen'}
                                 </span>
                                 <button
                                     className={styles.navBtn}
@@ -2164,7 +2784,7 @@ export default function Geoportal() {
                                 </button>
                                 <span className={styles.navDate}>
                                     {activeLayerId
-                                        ? (groupedImages.find(img => img.id === activeLayerId)?.date || 'Cargando...')
+                                        ? (groupedImages.find(img => img.id === activeLayerId.split('__VIS:')[0])?.date || 'Cargando...')
                                         : 'Seleccionar imagen'}
                                 </span>
                                 <button
@@ -2280,9 +2900,11 @@ export default function Geoportal() {
                                                 <div
                                                     className={`
                                                         ${styles.timelineDot} 
-                                                        ${!isCompareMode && img.id === activeLayerId ? styles.timelineDotActive : ''}
+                                                        ${!isCompareMode && img.id === activeLayerId?.split('__VIS:')[0] ? styles.timelineDotActive : ''}
                                                         ${isCompareMode && img.id === leftLayerId ? styles.timelineDotLeft : ''}
                                                         ${isCompareMode && img.id === rightLayerId ? styles.timelineDotRight : ''}
+                                                        ${cropT1?.id === img.id ? styles.timelineDotMaster : ''}
+                                                        ${cropT2?.id === img.id ? styles.timelineDotSlave : ''}
                                                     `}
                                                     style={{ backgroundColor: getDotColor(img.cloud) }}
                                                 ></div>
@@ -2294,7 +2916,7 @@ export default function Geoportal() {
                         </div>
                     )}
                 </div>
-            </div>
+            </div >
         </div >
     );
 }

@@ -28,6 +28,16 @@ export const SENSORS = {
         },
         idPrefix: "META/CANOPY/"
     },
+    "Digital Surface Model": {
+        collection: "USGS/SRTMGL1_003",
+        isStatic: true,
+        visParams: {
+            min: 0,
+            max: 3000,
+            palette: ['0000FF', '00FF00', 'FFFF00', 'FF0000', 'FFFFFF']
+        },
+        idPrefix: "USGS/SRTM/"
+    },
     "Combined (Landsat + Sentinel)": {
         isCombined: true // Flag for special handling
     }
