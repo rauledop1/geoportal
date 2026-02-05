@@ -600,14 +600,19 @@ export default function Geoportal() {
 
                                 if (diff) {
                                     idsToDelete.push(target.id);
-                                    // Maintain as a single feature (could be MultiPolygon)
-                                    const feature = {
-                                        type: 'Feature',
-                                        id: target.id, // Keep the same ID
-                                        properties: target.properties,
-                                        geometry: diff.geometry
-                                    };
-                                    newFeatures.push(feature);
+
+                                    // Explode MultiPolygon into separate Polygon features
+                                    const flattened = turf.flatten(diff);
+                                    flattened.features.forEach((f, fidx) => {
+                                        newFeatures.push({
+                                            type: 'Feature',
+                                            properties: {
+                                                ...target.properties,
+                                                auto_id: nextPolyId.current++ // Assign new auto_id to each part
+                                            },
+                                            geometry: f.geometry
+                                        });
+                                    });
                                     cutPerformed = true;
                                 }
                             } catch (err) {
@@ -619,6 +624,7 @@ export default function Geoportal() {
                             currentDrawControl.delete(idsToDelete);
                             if (newFeatures.length > 0) {
                                 currentDrawControl.add({ type: 'FeatureCollection', features: newFeatures });
+                                updateDrawnPolygons(currentDrawControl);
                                 setGeometry(newFeatures[0].geometry);
                             } else {
                                 setGeometry(null);
